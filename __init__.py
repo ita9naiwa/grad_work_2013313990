@@ -1,3 +1,4 @@
+
 import logging
 from gym.envs.registration import register
 
@@ -11,4 +12,3 @@ register(
     reward_threshold=1.0,
     nondeterministic=False
 )
- 

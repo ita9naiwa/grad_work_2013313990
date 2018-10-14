@@ -3,16 +3,6 @@ import numpy as np
 import envs.Mao as mao
 from time import sleep
 
-def discount(x, gamma):
-    """
-    Given vector x, computes a vector y such that
-    y[i] = x[i] + gamma * x[i+1] + gamma^2 x[i+2] + ...
-    """
-    y = np.ones_like(x)
-    for i in range(1, len(x)):
-        y[i:] *= gamma
-    y *= x
-    return y
 
 
 def get_entropy(vec):
@@ -54,7 +44,7 @@ def get_traj(agent, env, max_episode_length=1024, render=False):
         "info": infos,
         "policy_dists": policy_dists}
 
-env = mao.ClusteringEnv()
+env = mao.ClusteringEnv(p_job_arrival=1.0)
 
 for i_episode in range(1):
     observation = env.reset()
@@ -72,7 +62,8 @@ for i_episode in range(1):
             print("reward", reward)
             print("done?", done)
         """
-        sleep(3.0)
+        #print(info)
+        sleep(1.0)
 
 
 #        if done:

@@ -1,6 +1,5 @@
 import numpy as np
 import collections
-from queue import Queue
 class Event:
     def __init__(self, timestep, priority, name, detail):
         self.timestep = timestep
@@ -26,6 +25,8 @@ class Job:
         self.enter_time = enter_time
         self.start_time = -1  # not being allocated
         self.finish_time = -1
+    def __repr__(self):
+        return "Job(job_id: %d, enter_time: %d, finished at: %d" % (self.id, self.enter_time, self.finish_time)
 
 
 class JobSlot:
@@ -80,44 +81,51 @@ class JobSlot:
 
 class JobBacklog:
     def __init__(self, backlog_size):
-        self.backlog = Queue(maxsize=backlog_size)
+        #self.backlog = Queue(maxsize=backlog_size)
+        self.backlog = []
+
         self.curr_size = 0
         self.backlog_max_size = backlog_size
+        self._repr = np.zeros(shape=(backlog_size,), dtype=np.int32)
 
     def append_job(self, job):
-        self.backlog.put(job)
-        self.curr_size += 1
-
-    def get_job(self):
-
-        if self.curr_size == 0:
+        if self.curr_size >= self.backlog_max_size:
             raise IndexError
 
-        job = self.backlog.get()
-        self.curr_size -= 1
+        self.backlog.append(job)
+        self.curr_size += 1
+        self._repr[self.curr_size - 1] = 1
 
+    def get_job(self):
+        if self.curr_size == 0:
+            raise IndexError
+        self._repr[self.curr_size - 1] = 0
+        job = self.backlog[0]
+        self.backlog = self.backlog[1:]
+        self.curr_size -= 1
         return job
 
     def num_jobs(self):
         return self.curr_size
+
+    def repr(self):
+        return self._repr
 
 class JobRecord:
     def __init__(self):
         self.record = {}
 
 class Machine:
-    def __init__(self, num_resources, time_horizon, resource_slot):
+    def __init__(self, max_job_length, num_resources, time_horizon, resource_slot):
         self.num_resources = num_resources
         self.time_horizon = time_horizon
         self.res_slot = resource_slot
-        self.avbl_slot = np.ones((self.time_horizon, self.num_resources)) * self.res_slot
+        self.max_job_length = max_job_length
+        self.avbl_slot = np.ones((self.time_horizon, self.num_resources), dtype=np.int32) * self.res_slot
         self.current_timestep = 0
         self.running_jobs = []
-        self.graphical_view = [np.ones(shape=(self.time_horizon, self.res_slot[slot_size])) for slot_size in range(self.num_resources)]
 
         # colormap for graphical representation
-        self.colormap = np.arange(1 / float(30), 1, 1 / float(30))
-        np.random.shuffle(self.colormap)
 
 
 
@@ -126,26 +134,14 @@ class Machine:
         for t in range(0, self.time_horizon - job.len):
             new_avbl_res = self.avbl_slot[t: t + job.len, :] - job.res_vec
             if np.all(new_avbl_res[:] >= 0):
-                allocated = True
+
                 self.avbl_slot[t: t + job.len, :] = new_avbl_res
                 job.start_time = curr_time + t
                 job.finish_time = job.start_time + job.len
                 self.running_jobs.append(job)
-                # update graphical representation
-
-                assert job.start_time != -1
-                assert job.finish_time != -1
-                assert job.finish_time > job.start_time
-                new_color = self.colormap[np.random.randint(0, len(self.colormap))]
-                canvas_start_time = job.start_time - curr_time
-                canvas_end_time = job.finish_time - curr_time
-                for res in range(self.num_resources):
-                    for i in range(canvas_start_time, canvas_end_time):
-                        avbl_slot = np.where(self.graphical_view[res][i, :] == 0)[0]
-                        #self.graphical_view[res][i, avbl_slot[: job.res_vec[res]]] = new_color
-
-
+                allocated = True
                 break
+
         return allocated
 
     def time_proceed(self, curr_timestep):
@@ -173,12 +169,12 @@ class Machine:
             start_times.append(job.start_time)
 
     def repr(self):
-        return self.avbl_slot
+        return self.avbl_slot[:self.time_horizon, :]
 
 
 
 class ExtraInfo:
-    def __init__(self, max_track_since_new=1000):
+    def __init__(self, max_track_since_new=5):
         self.time_since_last_new_job = 0
         self.max_tracking_time_since_last_job = max_track_since_new
 
@@ -188,3 +184,7 @@ class ExtraInfo:
     def time_proceed(self):
         if self.time_since_last_new_job < self.max_tracking_time_since_last_job:
             self.time_since_last_new_job += 1
+
+    def extra_info(self):
+        # https://github.com/hongzimao/deeprm/blob/master/environment.py 106 line
+        return self.time_since_last_new_job / float(self.max_tracking_time_since_last_job)

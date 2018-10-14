@@ -18,20 +18,20 @@ from gym.utils import seeding
 
 class ClusteringEnv(gym.Env):
     metadata = {'render.modes': ['human']}
+    def __init__(self,n_resource_slot_capacities=(7, 7), p_job_arrival=0.5,
+            max_job_length=8, num_slots=3, backlog_size=50, discount=1.0, time_horizon=10):
 
-    def __init__(self, n_resources=2, n_resource_slot_capacities=(20, 15), p_job_arrival=0.5, max_job_log_size=100,
-                 max_job_slot_size=5, backlog_size=100, discount=1.0, time_horizon=5):
-
-        self.max_job_log_size = max_job_log_size
         self.repre = 'image'
         self.backlog_size = backlog_size
-        self.n_resources = n_resources
+        self.n_resources = len(n_resource_slot_capacities)
         self.p_job_arrival = p_job_arrival
-        self.max_job_slot_size = max_job_slot_size
+        self.num_slots = num_slots
         self.discount = discount
-        self.time_horizon = time_horizon
+        self.time_horizon = max(time_horizon, max_job_length)
         self.n_resource_slot_capacities = n_resource_slot_capacities
-        self.dist = dist(episode_max_size=1024, new_job_rate=p_job_arrival)
+        self.max_job_length = max_job_length
+        self.dist = dist(episode_max_size=1024, new_job_rate=p_job_arrival, job_len=max_job_length,
+            num_resources=self.n_resources, max_resource_usage=max(n_resource_slot_capacities))
         self.prev_timestep_proceeded = False
         self.seq_num = 0
         self.seq_idx = 0
@@ -47,8 +47,8 @@ class ClusteringEnv(gym.Env):
             MACHINE,
             EXTRA_INFO
         """
-        self.state_space = spaces.Discrete(self.max_job_slot_size)
-        self.action_space = spaces.Discrete(self.max_job_slot_size + 1) # num # n_resources denotes do nothing.
+        self.state_space = spaces.Discrete(self.num_slots)
+        self.action_space = spaces.Discrete(self.num_slots + 1) # num # n_resources denotes do nothing.
         self.scenario = self.dist.generate_work_sequence()
 
     def render(self, mode='human'):
@@ -78,7 +78,7 @@ class ClusteringEnv(gym.Env):
         a = "="
 
         title = "available"
-        for i in range(self.max_job_slot_size):
+        for i in range(self.num_slots):
             title += "\t\tjob slot %d" % (i+1)
         txt = ["" for _ in range(self.time_horizon)]
         for i in range(self.time_horizon):
@@ -122,22 +122,29 @@ class ClusteringEnv(gym.Env):
                     _t += y[j][i]
             print(_t)
         print(b)
-
-
-
-
-
         pass
 
     def step(self, a):
-        self._do_action(a)
+
+        self.last_timestamp_timestep = self.current_timestep
+        self.sync()
+        # can't pick job or slot is full;
+        if (a == self.num_slots) or (self.job_slot[a] is None):
+            self._handle_move()
+        # pick job `a` and do
+        else:
+            self.handle_assign(a)
+
+        if self.last_timestamp_timestep != self.current_timestep:
+            self._proceed()
 
         self.current_timestamp += 1
         done = self._is_finished()
         observation = self._observe()
         reward = self._get_reward()
+        info = self.job_record.record
 
-        return observation, reward, done, False
+        return observation, reward, done, info
 
     def reset(self, dist=None):
         if self.renderer is not None:
@@ -147,12 +154,13 @@ class ClusteringEnv(gym.Env):
         self.last_timestamp_timestep = 0
         self.current_timestep = 0
         self.current_timestamp = 0
-        self.job_slot = JobSlot(self.max_job_slot_size)
+        self.job_slot = JobSlot(self.num_slots)
         self.job_backlog = JobBacklog(self.backlog_size)
         self.job_record = JobRecord()
         self.extra_info = ExtraInfo()
-        self.machine = Machine(self.n_resources, self.time_horizon, self.n_resource_slot_capacities)
-
+        self.machine = Machine(self.max_job_length,
+            self.n_resources, self.time_horizon, self.n_resource_slot_capacities)
+        self.last_job_activated_timestep = -1
 
         if dist is not None:
             self.dist = dist
@@ -171,67 +179,102 @@ class ClusteringEnv(gym.Env):
 
         machine_repr = self.machine.repr()
         job_slot_repr = self.job_slot.repr()
+        job_backlog_repr = self.job_backlog.repr()
+        extra_info = self.extra_info.extra_info()
+        #print(machine_repr)
+        #print(job_slot_repr)
+        #print(job_backlog_repr)
+        #print(job_slot_repr)
         return {
             "machine": machine_repr,
-            "job_slot": job_slot_repr
+            "job_slot": job_slot_repr,
+            "job_backlog": job_backlog_repr,
+            "extra_info": extra_info
         }
 
+    def observation(self):
+        return self._observe()
 
-    def _do_action(self, a):
-        self.last_timestamp_timestep = self.current_timestep
-        self.sync()
-        # can't pick job or slot is full;
-        if (a == self.max_job_slot_size) or (self.job_slot[a] is None):
-            self._handle_move()
-        # pick job `a` and do
-        else:
-            self.handle_assign(a)
-        if self.last_timestamp_timestep != self.current_timestep:
-            self._proceed()
 
 
     def _proceed(self):
         # check there's finished jobs
+        self.extra_info.time_proceed()
         finished_job_info = self.machine.time_proceed(self.current_timestep)
 
     def sync(self):
         # check there is new job coming
-        if self.scenario[self.current_timestep] is not None:
+        if (self.last_job_activated_timestep != self.current_timestep) and (self.scenario[self.current_timestep] is not None):
             #if there's an new job
+            self.last_job_activated_timestep = self.current_timestep
             size = self.scenario[self.current_timestep]['size']
             duration = self.scenario[self.current_timestep]['duration']
-            new_job = Job(size, duration, '?', self.current_timestep)
-            self.job_backlog.append_job(new_job)
+            if duration != 0:
+                new_job = Job(size, duration, len(self.job_record.record), self.current_timestep)
+                self.job_backlog.append_job(new_job)
+                self.extra_info.new_job_comes()
+                self.job_record.record[new_job.id] = new_job
+
 
         if self.job_backlog.num_jobs() > 0:
             pass
 
         # move job in backlog to job slot if possible
+        self._dequeue_backlog()
+
+
+    def _dequeue_backlog(self):
         while True:
             if self.job_backlog.num_jobs() == 0:
-                break
+                return
             if self.job_slot.num_empty_slots() == 0:
-                break
+                return
             job = self.job_backlog.get_job()
-            i = self.job_slot.assign(job)
+            self.job_slot.assign(job)
 
     def _get_reward(self):
+        reward = 0
 
+        """
         # use negative number of unfinished jobs
         running_jobs = self.machine.get_num_unfinished_jobs()
         jobs_in_slots = self.job_slot.num_allocated_jobs()
         jobs_in_backlog = self.job_backlog.num_jobs()
         return -(running_jobs + jobs_in_slots + jobs_in_backlog)
-
         # is there any other metrics for use...
+        """
+
+        for job in self.machine.running_jobs:
+            if job is None:
+                continue
+            reward += -0.5 / float(job.len)
+
+        for job in self.job_slot.slot:
+            if job is None:
+                continue
+            reward += -0.8 / float(job.len)
+
+        for job in self.job_backlog.backlog:
+            if job is None:
+                continue
+            reward += -0.1 / float(job.len)
+        return reward
+
+
 
     def _handle_move(self):
         self.current_timestep += 1
 
     def handle_assign(self, i):
         job = self.job_slot[i]
-        self.job_slot.release(i)
-        self.machine.allocate_job(job, self.current_timestep)
+        if self.machine.allocate_job(job, self.current_timestep) is True:
+            self.job_record.record[job.id] = job
+            self.job_slot.release(i)
+            return True
+        else:
+            return False
+
+        self._dequeue_backlog()
 
 
 
