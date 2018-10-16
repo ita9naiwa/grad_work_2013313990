@@ -1,5 +1,4 @@
-import sys
-sys.path.append('../')
+import test_base
 import tensorflow as tf
 from models.RL_model import actor_network
 from models.baselines import Fifo_model

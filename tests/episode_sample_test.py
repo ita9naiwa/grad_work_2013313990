@@ -1,5 +1,5 @@
-import sys
-sys.path.append('../')
+import test_base
+
 import gym
 import numpy as np
 import envs.Mao as mao
