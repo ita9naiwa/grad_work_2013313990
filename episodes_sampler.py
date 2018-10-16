@@ -4,7 +4,6 @@ import numpy as np
 import envs.Mao as mao
 import models.model
 import models.baselines
-DEBUG = True
 
 def get_discount(x, gamma):
     """
