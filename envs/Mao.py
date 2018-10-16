@@ -18,9 +18,9 @@ from gym.utils import seeding
 
 class ClusteringEnv(gym.Env):
     metadata = {'render.modes': ['human']}
-    def __init__(self,n_resource_slot_capacities=(7, 7), p_job_arrival=0.5,
+    def __init__(self, observation_mode='image', n_resource_slot_capacities=(7, 7), p_job_arrival=0.5,
             max_job_length=8, num_slots=3, backlog_size=50, discount=1.0, time_horizon=10):
-
+        self.observation_mode = observation_mode
         self.repre = 'image'
         self.backlog_size = backlog_size
         self.n_resources = len(n_resource_slot_capacities)
@@ -181,19 +181,61 @@ class ClusteringEnv(gym.Env):
         job_slot_repr = self.job_slot.repr()
         job_backlog_repr = self.job_backlog.repr()
         extra_info = self.extra_info.extra_info()
-        #print(machine_repr)
-        #print(job_slot_repr)
-        #print(job_backlog_repr)
-        #print(job_slot_repr)
-        return {
+
+        observation = {
             "machine": machine_repr,
             "job_slot": job_slot_repr,
             "job_backlog": job_backlog_repr,
             "extra_info": extra_info
         }
 
+        if self.observation_mode == 'image':
+            return self.observation_to_2d_repr(observation)
+        else:
+            return observation
+
+
     def observation(self):
         return self._observe()
+
+    def observation_to_2d_repr(self, observation):
+        #print(observation)
+        n_resource_slot_capacities = self.n_resource_slot_capacities
+        machine = observation['machine']
+        job_slot = observation['job_slot']
+        num_job_slots = len(job_slot['lengths'])
+        backlog = observation['job_backlog']
+        backlog_size = len(backlog)
+        time_horizon, num_resources = observation['machine'].shape
+
+        ret_ret = []
+        for resource_index in range(num_resources):
+            ret = []
+            capacity = n_resource_slot_capacities[resource_index]
+            gph = np.zeros(shape=(time_horizon, capacity), dtype=np.float32)
+            for i in range(time_horizon):
+                usage = capacity - machine[i, resource_index]
+                gph[i, :usage] = 1.0
+            ret.append(gph)
+
+            for i in range(num_job_slots):
+                gph = np.zeros(shape=(time_horizon, capacity), dtype=np.float32)
+                l = job_slot['lengths'][i]
+                if l is None:
+                    pass
+                else:
+                    usage = job_slot['resource_vectors'][i][resource_index]
+                    gph[:l, :usage] = 1.0
+                ret.append(gph)
+            ret = np.concatenate(ret, axis=1)
+            ret_ret.append(ret)
+        new_width = 1 + (backlog_size // time_horizon)
+        ret = np.concatenate([backlog, np.zeros(shape=(time_horizon * new_width - backlog_size,))]).reshape(
+                time_horizon, new_width)
+
+        ret_ret.append(ret)
+        ret_ret = np.concatenate(ret_ret, axis=1)
+        return ret_ret
 
 
 

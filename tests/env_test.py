@@ -1,3 +1,6 @@
+import sys
+sys.path.append('../')
+
 import gym
 import numpy as np
 import envs.Mao as mao

@@ -14,13 +14,15 @@ def nd_flatten(ndarr, d=1):
 
 class actor_network(object):
 
-    def __init__(self, sess, action_dim, input_width, input_height, learning_rate, tau, batch_size=1):
-        self.sess = sess
+    def __init__(self, sess, action_dim, input_width, input_height, learning_rate, tau):
+        if sess != None:
+            self.sess = sess
+        else:
+            sess = tf.Session()
         self.input_width, self.input_height = input_width, input_height
         self.input_size = self.input_width * self.input_height
         self.action_dim = action_dim
         self.learning_rate = learning_rate
-        self.batch_size = batch_size
         self.network_widths = [22]
         self.learning_rate
         (self.out, self.state_holder, self.actions_holder, self.values_holder,
@@ -55,9 +57,18 @@ class actor_network(object):
         return out, states, actions, values, loss, optimizer
         # Supervised Learning
 
-    def choose_action(self, states,):
-        act_prob = self.sess.run(self.out, {self.state_holder: states})
-        return np.argmax(act_prob)
+    def p_given_state(self, observations):
+        shape = observations.shape
+        if len(shape) == 2:
+            new_ret = np.reshape(observations, (1, np.prod(shape, dtype=int)))
+        elif len(shape) == 3:
+            new_ret = np.reshape(observations, (shape[0], np.prod(shape[:-2], dtype=int)))
+
+        return self.sess.run(self.out, {self.state_holder: new_ret})
+
+    def choose_action(self, observations):
+        action_dist = self.p_given_state(observations)
+        return np.argmax(action_dist)
 
     def train(self, states, actions, values):
         return self.sess.run([self.out, self.optimizer],
@@ -65,22 +76,3 @@ class actor_network(object):
                 self.state_holder: states,
                 self.actions_holder: actions,
                 self.values_holder: values})[0]
-
-
-
-if __name__ == "__main__":
-    sess = tf.Session()
-    my_model = actor_network(sess,
-        action_dim=3,
-        input_width=2,
-        input_height=2,
-        learning_rate=0.01,
-        tau=0.01)
-
-    actions = [1,2]
-    states = [[1,2,3,4],[5,6,7,8]]
-    values = [3.0, 2.1]
-
-
-    ret = my_model.train(states, actions, values)
-    print(ret);

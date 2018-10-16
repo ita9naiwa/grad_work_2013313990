@@ -1,10 +1,9 @@
-import tensorflow as tf
 import time
 import gym
 import numpy as np
 import envs.Mao as mao
 import models.model
-
+import models.baselines
 DEBUG = True
 
 def get_discount(x, gamma):
@@ -12,7 +11,7 @@ def get_discount(x, gamma):
     Given vector x, computes a vector y such that
     y[i] = x[i] + gamma * x[i+1] + gamma^2 x[i+2] + ...
     """
-    y = np.ones_like(x,dtype=np.float32)
+    y = np.ones_like(x, dtype=np.float32)
     for i in range(1, len(x)):
         y[i:] *= gamma
     y *= x
@@ -21,50 +20,12 @@ def get_discount(x, gamma):
 
 def get_entropy(dist):
 
-    entropy = -np.sum(dist * np.log(dist + 1e-07))
+    entropy = -(np.sum(dist * np.log(dist + 1e-07)))
     if np.isnan(entropy):
         entropy = 0
     return entropy
 
 
-def observation_to_2d_repr(observation, n_resource_slot_capacities=(7,7)):
-    #print(observation)
-
-    machine = observation['machine']
-    job_slot = observation['job_slot']
-    num_job_slots = len(job_slot['lengths'])
-    backlog = observation['job_backlog']
-    backlog_size = len(backlog)
-    time_horizon, num_resources = observation['machine'].shape
-
-    ret_ret = []
-    for resource_index in range(num_resources):
-        ret = []
-        capacity = n_resource_slot_capacities[resource_index]
-        gph = np.zeros(shape=(time_horizon, capacity), dtype=np.float32)
-        for i in range(time_horizon):
-            usage = capacity - machine[i, resource_index]
-            gph[i, :usage] = 1.0
-        ret.append(gph)
-
-        for i in range(num_job_slots):
-            gph = np.zeros(shape=(time_horizon, capacity), dtype=np.float32)
-            l = job_slot['lengths'][i]
-            if l is None:
-                pass
-            else:
-                usage = job_slot['resource_vectors'][i][resource_index]
-                gph[:l, :usage] = 1.0
-            ret.append(gph)
-        ret = np.concatenate(ret, axis=1)
-        ret_ret.append(ret)
-    new_width = 1 + (backlog_size // time_horizon)
-    ret = np.concatenate([backlog, np.zeros(shape=(time_horizon * new_width - backlog_size,))]).reshape(
-            time_horizon, new_width)
-
-    ret_ret.append(ret)
-    ret_ret = np.concatenate(ret_ret, axis=1)
-    return ret_ret
 
 
 def concatenate_all_observations(trajectories, input_height, input_width, n_resource_slot_capacities):
@@ -77,8 +38,7 @@ def concatenate_all_observations(trajectories, input_height, input_width, n_reso
     timesteps = 0
     for traj in trajectories:
         for j in range(len(traj['rewards'])):
-            observation_2d = observation_to_2d_repr(traj['observations'][j], n_resource_slot_capacities)
-            all_observations[timesteps, :, :] = observation_2d
+            all_observations[timesteps, :, :] = traj['observations'][j]
             timesteps += 1
     return all_observations
 
@@ -163,18 +123,11 @@ def get_traj(agent, env, max_episode_length=1024, render=False):
         "entropies": np.array(entropies)}
 
 
-class random_action_agent(object):
-    def __init__(self, num_slots):
-        self.num_slots = num_slots
-
-    def p_given_state(self, observation):
-        return np.random.random(self.num_slots + 1)
 
 
-def prep(session, num_slots=2, time_horizon=10, n_resource_slot_capacities=(7,7), backlog_size=50,
-    num_epochs=10,num_examples=3,
-    num_sequences_per_batch=3,discount=0.8,
-    max_episode_length=1024, render=1024):
+def sample_batches_given_agent(agent=None, num_slots=2, time_horizon=10, n_resource_slot_capacities=(7, 7), backlog_size=50,
+    num_epochs=10,num_examples=3, num_sequences_per_batch=3, discount=0.8, max_episode_length=1024,
+    render=False):
 
     #print(np.sum(num_slots * np.array(n_resource_slot_capacities)))
     env = mao.ClusteringEnv(
@@ -186,15 +139,13 @@ def prep(session, num_slots=2, time_horizon=10, n_resource_slot_capacities=(7,7)
     input_height = time_horizon
     input_width = (1 + num_slots) * np.sum(n_resource_slot_capacities) + 1 + (backlog_size // time_horizon)
 
-    if DEBUG:
+    if agent is None:
         learner = random_action_agent(num_slots)
     else:
-        learner = models.model.actor_network(session,
-                num_slots+1, input_width, input_height, 0.001, 0.01,
-                batch_size=num_sequences_per_batch)
+        learner = agent
 
     for _iter in range(num_epochs):
-        print("epoch: %d" %_iter)
+        print("epoch: %d" % _iter)
         train_dict = {
             "observations": [],
             "actions": [],
@@ -247,5 +198,22 @@ def prep(session, num_slots=2, time_horizon=10, n_resource_slot_capacities=(7,7)
 
 
 if __name__ == "__main__":
-    #sess = tf.Session()
-    prep(None)
+    # parameters
+    num_slots = 2
+    time_horizon = 10
+    n_resource_slot_capacities = (7, 7)
+    input_height = time_horizon
+    backlog_size = 50
+    input_width = (1 + num_slots) * np.sum(n_resource_slot_capacities) + 1 + (backlog_size // time_horizon)
+    batch_size = 5
+    num_epochs = 50
+    num_examples = 5
+    discount = 0.8
+    max_episode_length = 1024
+    #learner = models.model.actor_network(sess=None,
+    #            num_slots + 1, input_width, input_height, 0.001, 0.01)
+    learner = models.baselines.random_action_model(num_slots)
+
+    sample_batches_given_agent(agent=learner, discount=discount,
+        num_slots=num_slots, time_horizon=time_horizon, n_resource_slot_capacities=n_resource_slot_capacities, backlog_size=backlog_size,
+        num_epochs=num_epochs, num_examples=num_examples, num_sequences_per_batch=batch_size, max_episode_length=max_episode_length)
