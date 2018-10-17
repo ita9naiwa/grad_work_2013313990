@@ -9,7 +9,7 @@ import numpy as np
 
 import gym
 from gym import error
-rom gym import spaces
+from gym import spaces
 from gym import utils
 from gym.utils import seeding
 
