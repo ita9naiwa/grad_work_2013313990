@@ -1,5 +1,3 @@
-from gym.envs.classic_control import rendering
-
 from .job_distribution import dist
 from .variables import Job, JobBacklog, JobRecord, JobSlot, ExtraInfo, Machine
 import matplotlib.pyplot as plt
@@ -8,15 +6,16 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import math
 import heapq
 import numpy as np
+
 import gym
 from gym import error
-from gym import spaces
+rom gym import spaces
 from gym import utils
 from gym.utils import seeding
 
 
 
-class ClusteringEnv(gym.Env):
+class ClusteringEnv():
     metadata = {'render.modes': ['human']}
     def __init__(self, observation_mode='image', n_resource_slot_capacities=(7, 7), p_job_arrival=0.5,
             max_job_length=8, num_slots=3, backlog_size=50, discount=1.0, time_horizon=10):
