@@ -1,7 +1,5 @@
 import tensorflow as tf
 import tflearn
-from keras.models import Sequential
-from keras.layers import Dense
 import numpy as np
 
 
@@ -13,7 +11,6 @@ def nd_flatten(ndarr, d=1):
 
 
 class actor_network(object):
-
     def __init__(self, sess, action_dim, input_width, input_height, learning_rate, tau):
         if sess != None:
             self.sess = sess

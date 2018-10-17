@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import envs.Mao as mao
 from time import sleep
-import models.model
+import models.RL_model
 import models.baselines
 
 import episodes_sampler

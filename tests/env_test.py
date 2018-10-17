@@ -1,3 +1,7 @@
+import sys
+sys.path.append('../')
+sys.path.append('../src')
+
 import test_base
 
 import gym
