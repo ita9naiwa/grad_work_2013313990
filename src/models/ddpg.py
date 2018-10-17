@@ -2,9 +2,8 @@ import tensorflow as tf
 import tflearn
 import numpy as np
 
-
-class actor_network(object):
-    def __init__(self, sess, action_dim, input_width, input_height, learning_rate, tau):
+class DDPG(object):
+    def __init__(self, sess, action_dim, input_size, learning_rate, tau):
         if sess != None:
             self.sess = sess
         else:
@@ -12,9 +11,7 @@ class actor_network(object):
         self.discount = 1.0
         self.target_critic_update = None
         self.target_actor_update = None
-
-        self.input_width, self.input_height = input_width, input_height
-        self.input_size = self.input_width * self.input_height
+        self.input_size = input_size
         self.action_dim = action_dim
         self.learning_rate = learning_rate
         self.network_widths = [22]
@@ -28,7 +25,7 @@ class actor_network(object):
         self.target_critic = self.create_critic_network("target_critic")
 
         # calc critic loss
-        self.y_i = tf.input_data(shape=(None, 1))
+        self.y_i = tflearn.input_data(shape=(None, 1))
         self.critic_loss = tflearn.mean_square(self.critic['out'], self.y_i)
         self.optimizer_critic_loss = tf.train.AdamOptimizer(self.learning_rate).minimize(self.critic_loss)
 
@@ -39,6 +36,7 @@ class actor_network(object):
 
         self.optimizer_actor_loss = tf.train.AdamOptimizer(self.learning_rate).apply_gradients(
             zip(self.actor_grads, self.actor['params']))
+
 
     def generate_action(self, actor, states):
         dist_given_state = self.sess.run(
@@ -89,15 +87,13 @@ class actor_network(object):
 
         self.sess.run(self.target_critic_update + self.target_actor_update)
 
-
     def create_critic_network(self, namescope):
 
         w_init = tflearn.initializations.normal(stddev=0.01)
-
-        with tf.variable_scrpe(namescope):
+        with tf.variable_scope(namescope):
             states = inputs = tflearn.input_data(shape=(None, self.input_size), dtype=tf.float32)
             actions = tflearn.input_data(shape=(None, self.action_dim), dtype=tf.float32)
-            net_i = tflearn.fully_connected(inputs, 400, weights_init=w_init)
+            net_l = tflearn.fully_connected(inputs, 400, weights_init=w_init)
             net_l = tflearn.layers.normalization.batch_normalization(net_l, 300)
             #net_l = tflearn.activations.relu(net_l, 200)
             net_a = tflearn.fully_connected(inputs, 300, weights_init=w_init)
@@ -150,3 +146,14 @@ class actor_network(object):
 
         return out, states, actions, values, loss, optimizer
         # Supervised Learning
+
+
+def main(args):
+    #3actor_network(object):
+    #ef __init__(self, sess, action_dim, input_width, input_height, learning_rate, tau):
+
+    with tf.Session() as sess:
+        DDPG(sess, 1, input_widths)
+
+if __name__ == "__main__":
+    main()

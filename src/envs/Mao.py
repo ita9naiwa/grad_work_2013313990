@@ -14,7 +14,6 @@ from gym import utils
 from gym.utils import seeding
 
 
-
 class ClusteringEnv():
     metadata = {'render.modes': ['human']}
     def __init__(self, observation_mode='image', n_resource_slot_capacities=(7, 7), p_job_arrival=0.5,
