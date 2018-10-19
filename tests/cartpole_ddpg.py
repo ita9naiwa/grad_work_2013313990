@@ -1,7 +1,9 @@
+import test_base
+
 import src.models.ddpg as ddpg
 from src.models.replay_buffer import ReplayBuffer
 from src.noise import OrnsteinUhlenbeckActionNoise
-
+from src.summary import summary
 import numpy as np
 import tensorflow as tf
 import gym
@@ -10,7 +12,7 @@ import scipy.signal
 env = gym.make('CartPole-v1')
 sess = tf.Session()
 ob = env.reset()
-state_dim = env.action_space.n
+state_dim = 4
 action_dim = env.action_space.n
 discount = 0.99
 batch_size = 100
@@ -50,8 +52,11 @@ class Reward(object):
 
 
 def __main__():
-    model = ddpg.DDPG(sess, state_dim, len(ob), actor_lr, critic_lr, tau=tau)
+    model = ddpg.DDPG(sess, action_dim, len(ob), actor_lr, critic_lr, tau=tau)
     sess.run(tf.initializers.global_variables())
+
+    summary_writer = summary(sess, "./ddpg_log", episode_len=int, qmax=float)
+
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
     replay_buffer = ReplayBuffer(buffer_size)
     episode_buffer = np.empty((0, 5), float)
@@ -85,7 +90,7 @@ def __main__():
                     replay_buffer.add(step[0], step[1], step[2], step[3], step[4])
                 break
             s = s2
-
+        summary_writer.write_log(episode_len=ep_len, qmax=ep_ave_max_q / float(ep_len))
         print("[episode %d] average episode length : %d" % (current_ep, ep_len), "episode reward : %d, Qmax : %0.2f" % (ep_reward, float(ep_ave_max_q / float(ep_len))))
 
 if __name__ == "__main__":

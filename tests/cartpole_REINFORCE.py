@@ -1,3 +1,5 @@
+import test_base
+
 import src.models.REINFORCE as rl
 from src.models.replay_buffer import ReplayBuffer
 from src.noise import OrnsteinUhlenbeckActionNoise
@@ -18,7 +20,7 @@ batch_size = 16
 num_job_sets = 1000
 render = True
 buffer_size = 100000
-lr = 0.01
+lr = 0.001
 seed = 1234
 
 
@@ -53,9 +55,11 @@ def __main__():
     replay_buffer = ReplayBuffer(buffer_size)
     episode_buffer = np.empty((0, 5), float)
     reward = Reward(0.1, discount)
+    sigma = np.diag(0.3 * np.ones(action_dim, dtype=np.float32))
+
     for current_job_cnt in range(num_job_sets):
         job_buffer = []
-
+        rewards = []
         for current_ep in range(batch_size):
             ep_reward = 0.0
             ep_ave_max_q = 0.0
@@ -66,7 +70,8 @@ def __main__():
             list_y = []
             for ep_len in range(episode_max_length):
                 a = model.get_action_dist(s)
-                print(a)
+                if current_job_cnt <= 50:
+                    a = np.random.multivariate_normal(a, sigma)
                 action = np.argmax(a)
                 s2, r, done, info = env.step(action)
                 list_s.append(s)
@@ -80,7 +85,16 @@ def __main__():
                     for i in range(len(list_r)):
                         y_i = np.sum(disc_vec[i:]) / (discount ** i)
                         list_y.append(y_i)
+                    """
+                    print("y: ", list_y)
+                    print("r: ", list_r)
+                    print("s: ", list_s)
+                    print("")
+                    print("")
+                    print("")
+                    """
                     job_buffer.append((list_s, list_a, list_r, list_y))
+                    rewards.append(ep_len)
                     break
                 s = s2
         # compute baseline
@@ -106,12 +120,13 @@ def __main__():
                 y = job_buffer[i][3][t]
                 b = baseline[t]
                 var = y - b
+                var = y
                 ss.append(s)
                 aa.append(a)
                 vv.append(var)
         model.train(np.array(ss), np.array(aa), np.array(vv))
 
-        print("[episode %d] average episode length : %d" % (current_job_cnt, ep_len), "episode reward : %d" % ep_reward)
+        print("[jobset %d] avg episode length : %0.2f" % (current_job_cnt, np.mean(ep_lengths)), "avg episode reward : %0.2f" % np.mean(rewards))
 
 if __name__ == "__main__":
     __main__()

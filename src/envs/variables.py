@@ -49,10 +49,14 @@ class JobSlot:
         self.slot[i] = None
 
     def assign(self, job):
+        r = []
         for i in range(len(self.slot)):
             if self.slot[i] is None:
-                self.slot[i] = job
-                return i
+                r.append(i)
+
+        i = np.random.choice(r)
+        self.slot[i] = job
+        return i
 
     def repr(self):
         enter_times = []
@@ -90,7 +94,7 @@ class JobBacklog:
 
     def append_job(self, job):
         if self.curr_size >= self.backlog_max_size:
-            raise IndexError
+            raise IndexError("Backlog is Full")
 
         self.backlog.append(job)
         self.curr_size += 1

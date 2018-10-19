@@ -3,7 +3,7 @@ import tflearn
 import numpy as np
 
 class DDPG(object):
-    def __init__(self, sess, action_dim, input_size, actor_learning_rate=0.0001, critic_learning_rate=0.001, tau=0.001):
+    def __init__(self, sess, action_dim, state_dim, actor_learning_rate=0.0001, critic_learning_rate=0.001, tau=0.001):
         if sess != None:
             self.sess = sess
         else:
@@ -11,7 +11,7 @@ class DDPG(object):
         self.discount = 0.9
         self.target_critic_update = None
         self.target_actor_update = None
-        self.input_size = input_size
+        self.state_dim = state_dim
         self.action_dim = action_dim
         self.actor_learning_rate = actor_learning_rate
         self.critic_learning_rate = critic_learning_rate
@@ -103,6 +103,7 @@ class DDPG(object):
                 y_i[k, 0] = r_i[k] + self.discount * target_q_j[k,0]
 
         #print(a_i)
+
         pred_q, _ = self.sess.run(
             [self.critic['out'], self.optimizer_critic_loss],
             feed_dict={
@@ -122,7 +123,7 @@ class DDPG(object):
 
         w_init = tflearn.initializations.truncated_normal(stddev=0.01)
         with tf.variable_scope(namescope):
-            states = inputs = tflearn.input_data(shape=(None, self.input_size), dtype=tf.float32, name="states")
+            states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
             actions = tflearn.input_data(shape=(None, self.action_dim), dtype=tf.float32, name="actions")
             net_l = tflearn.fully_connected(inputs, 300, weights_init=w_init)
             #net_l = tflearn.layers.normalization.batch_normalization(net_l)
@@ -136,9 +137,7 @@ class DDPG(object):
             o = tflearn.fully_connected(net, 1)
 
         parameters = tf.trainable_variables(namescope)
-        print("len of critic net parameters: %d" % len(parameters))
-        for p in parameters:
-            print(p)
+
         return {
             "states": states,
             "actions": actions,
@@ -151,7 +150,7 @@ class DDPG(object):
         #otherwise, manually flat inputs
         with tf.variable_scope(namescope):
             w_init = tflearn.initializations.normal(stddev=0.01)
-            states = inputs = tflearn.input_data(shape=(None, self.input_size), dtype=tf.float32)
+            states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32)
             net = tflearn.fully_connected(inputs, 300, weights_init=w_init)
             net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
@@ -159,12 +158,11 @@ class DDPG(object):
             net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
             out = tflearn.fully_connected(net, self.action_dim, weights_init=w_init)
-            out = tflearn.activations.tanh(out)
+            #out = tflearn.activations.tanh(out)
+            #out = tflearn.activations.sigmoid(out)
+            out = tflearn.activations.softmax(out)
 
         parameters = tf.trainable_variables(namescope)
-        print("len of actor net parameters: %d" % len(parameters))
-        for p in parameters:
-            print(p)
 
         return {
             "states": states,

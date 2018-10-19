@@ -23,10 +23,12 @@ for i_episode in range(1):
     observation = env.reset()
     for t in range(1000):
 
-        #env.render()
+        env.render()
 
         action = env.action_space.sample()
         observation, reward, done, info = env.step(action)
+        observation = np.array(observation)
+        observation = np.reshape(observation, newshape=(np.prod(observation.shape),))
         """
         if True:
             print("action", action)

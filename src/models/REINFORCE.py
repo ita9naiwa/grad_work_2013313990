@@ -27,19 +27,20 @@ class model(object):
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
         out = tflearn.fully_connected(net, self.action_dim)
+        out = tflearn.activations.sigmoid(out)
         out = tflearn.activations.softmax(out)
         parameters = tf.trainable_variables()
         # Policy Gradient
 
-        actions = tflearn.input_data(shape=(None,), dtype=tf.int32)
-        values = tflearn.input_data(shape=(None,), dtype=tf.float32)
+        actions = tflearn.input_data(shape=(None,), dtype=tf.int32, name='actions')
+        values = tflearn.input_data(shape=(None,), dtype=tf.float32, name='values')
         self.N = N = tflearn.input_data(shape=(), dtype=tf.int32)
         self.indices = indices = tf.stack([tf.range(N, dtype=tf.int32), actions], axis=1)
         self.p_s_a = p_s_a = tf.gather_nd(out, indices)
-        loss = tf.reduce_mean(p_s_a * values)
-        gradidents = tf.gradients(loss, parameters)
-        gradients = [-g for g in gradidents]
-        optimizer = (tf.train.RMSPropOptimizer(self.learning_rate).apply_gradients(zip(gradidents, parameters)))
+        self.loss = loss = -tf.reduce_mean(p_s_a * values)
+        gradients = tf.gradients(loss, parameters)
+        #gradients = [-g for g in gradients]
+        optimizer = (tf.train.AdamOptimizer(self.learning_rate).apply_gradients(zip(gradients, parameters)))
 
         parameters = tf.trainable_variables()
 
@@ -51,17 +52,15 @@ class model(object):
 
     def get_action(self, states):
         return self.sess.run(self.out,
-                feed_dict={
-                    self.state_holder: states,})
+                feed_dict={self.state_holder: states})
 
     def train(self, states, actions, values):
         [self.loss, self.optimizer]
-        print("values.shape:",  values.shape)
-        ret =  self.sess.run([self.p_s_a, self.optimizer],
+        ret =  self.sess.run([self.indices, self.optimizer],
                 feed_dict={
                     self.state_holder: states,
                     self.actions_holder: actions,
                     self.values_holder: values,
                     self.N: len(actions)})[0]
-        print("ret.shape", ret.shape)
+        #print(ret)
         return ret

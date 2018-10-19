@@ -16,8 +16,8 @@ from gym.utils import seeding
 
 class ClusteringEnv():
     metadata = {'render.modes': ['human']}
-    def __init__(self, observation_mode='image', n_resource_slot_capacities=(7, 7), p_job_arrival=0.5,
-            max_job_length=8, num_slots=3, backlog_size=50, discount=1.0, time_horizon=10):
+    def __init__(self, observation_mode='image', n_resource_slot_capacities=(10, 10), p_job_arrival=0.7,
+            max_job_length=15, num_slots=3, backlog_size=5555, discount=1.0, time_horizon=20):
         self.observation_mode = observation_mode
         self.repre = 'image'
         self.backlog_size = backlog_size
@@ -102,9 +102,6 @@ class ClusteringEnv():
             for i in range(len(x)):
                 x[i] = '\t\t\t' + x[i]
             y.append(x)
-
-
-
         b = a * 200
         print(b)
 
@@ -119,7 +116,9 @@ class ClusteringEnv():
                 if i < 6:
                     _t += y[j][i]
             print(_t)
+        print("There are %d jobs waiting in job backlog" % self.job_backlog.num_jobs())
         print(b)
+
         pass
 
     def step(self, a):
@@ -131,7 +130,10 @@ class ClusteringEnv():
             self._handle_move()
         # pick job `a` and do
         else:
-            self.handle_assign(a)
+            assigned = self.handle_assign(a)
+            # if the model choose wrong action, then move
+            if assigned is False:
+                self._handle_move()
 
         if self.last_timestamp_timestep != self.current_timestep:
             self._proceed()
@@ -147,6 +149,10 @@ class ClusteringEnv():
     def reset(self, dist=None):
         if self.renderer is not None:
             self.renderer.close()
+
+        if dist is not None:
+            self.dist = dist
+
         self.renderer = None
         self.scenario = self.dist.generate_work_sequence()
         self.last_timestamp_timestep = 0
@@ -156,12 +162,14 @@ class ClusteringEnv():
         self.job_backlog = JobBacklog(self.backlog_size)
         self.job_record = JobRecord()
         self.extra_info = ExtraInfo()
+        self.finished_job_durations = []
+        self.finisihed_job_times_taken = []
         self.machine = Machine(self.max_job_length,
             self.n_resources, self.time_horizon, self.n_resource_slot_capacities)
         self.last_job_activated_timestep = -1
 
-        if dist is not None:
-            self.dist = dist
+
+        return self._observe()
 
 
     def close(self):
@@ -235,12 +243,17 @@ class ClusteringEnv():
         ret_ret = np.concatenate(ret_ret, axis=1)
         return ret_ret
 
-
+    def _get_avg_slowdown(self):
+        return np.mean([taken_time / float(duration) for (taken_time, duration)
+            in zip(self.finisihed_job_times_taken, self.finished_job_durations)])
 
     def _proceed(self):
         # check there's finished jobs
         self.extra_info.time_proceed()
-        finished_job_info = self.machine.time_proceed(self.current_timestep)
+        durations, taken_times = self.machine.time_proceed(self.current_timestep)
+        self.finished_job_durations += durations
+        self.finisihed_job_times_taken += taken_times
+
 
     def sync(self):
         # check there is new job coming
@@ -287,17 +300,17 @@ class ClusteringEnv():
         for job in self.machine.running_jobs:
             if job is None:
                 continue
-            reward += -0.5 / float(job.len)
+            reward += -0.3 / float(job.len)
 
         for job in self.job_slot.slot:
             if job is None:
                 continue
-            reward += -0.8 / float(job.len)
+            reward += -1.0/ float(job.len)
 
         for job in self.job_backlog.backlog:
             if job is None:
                 continue
-            reward += -0.1 / float(job.len)
+            reward += -0.5 / float(job.len)
         return reward
 
 
