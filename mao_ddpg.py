@@ -14,7 +14,7 @@ sess = tf.Session()
 state_dim = np.prod(ob.shape)
 action_dim = env.action_space.n
 discount = 0.99
-batch_size = 64
+batch_size = 16
 num_episodes = 1000
 max_episode_length = 200
 render = True
@@ -48,7 +48,7 @@ for i_episode in range(num_episodes):
         ep_reward += reward
         s2 = flatten(s2)
         replay_buffer.add(s, a, reward, done, s2)
-        if replay_buffer.size() >= batch_size:
+        if replay_buffer.size() >= batch_size and i_episode <= 30:
             minibatch = replay_buffer.sample_batch(batch_size)
             pred = model.train(minibatch)
             #print(pred)
