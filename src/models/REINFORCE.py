@@ -3,7 +3,7 @@ import tflearn
 import numpy as np
 
 class model(object):
-    def __init__(self, sess, state_dim, action_dim, learning_rate):
+    def __init__(self, sess, state_dim, action_dim, learning_rate, network_widths=[300, 200, 30]):
         if sess != None:
             self.sess = sess
         else:
@@ -11,7 +11,7 @@ class model(object):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.learning_rate = learning_rate
-        self.network_widths = [22]
+        self.network_widths = network_widths
         self.learning_rate
         (self.out, self.state_holder, self.actions_holder, self.values_holder,
         self.loss, self.optimizer) = self._create_network()
@@ -23,15 +23,19 @@ class model(object):
         #otherwise, manually flat inputs
         w_init = tflearn.initializations.truncated_normal(stddev=0.01)
         states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
-        net = tflearn.fully_connected(inputs, 300, weights_init=w_init)
-        net = tflearn.layers.normalization.batch_normalization(net)
+        net = tflearn.fully_connected(inputs, self.network_widths[0], weights_init=w_init)
+        #net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
+        for network_width in self.network_widths[1:]:
+            net = tflearn.fully_connected(net, network_width, weights_init=w_init)
+            net = tflearn.layers.normalization.batch_normalization(net)
+            net = tflearn.activations.relu(net)
+
         out = tflearn.fully_connected(net, self.action_dim)
-        out = tflearn.activations.sigmoid(out)
         out = tflearn.activations.softmax(out)
         parameters = tf.trainable_variables()
-        # Policy Gradient
 
+        # Policy Gradient
         actions = tflearn.input_data(shape=(None,), dtype=tf.int32, name='actions')
         values = tflearn.input_data(shape=(None,), dtype=tf.float32, name='values')
         self.N = N = tflearn.input_data(shape=(), dtype=tf.int32)

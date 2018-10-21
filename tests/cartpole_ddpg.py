@@ -1,7 +1,7 @@
 import test_base
 
 import src.models.ddpg as ddpg
-from src.models.replay_buffer import ReplayBuffer
+from src.models.buffer import ReplayBuffer
 from src.noise import OrnsteinUhlenbeckActionNoise
 from src.summary import summary
 import numpy as np

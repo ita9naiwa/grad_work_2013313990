@@ -1,7 +1,7 @@
 import test_base
 
 import src.models.REINFORCE as rl
-from src.models.replay_buffer import ReplayBuffer
+from src.models.buffer import ReplayBuffer
 from src.noise import OrnsteinUhlenbeckActionNoise
 
 import numpy as np
@@ -12,49 +12,21 @@ import scipy.signal
 env = gym.make('CartPole-v1')
 sess = tf.Session()
 ob = env.reset()
+
 state_dim = 4
 action_dim = env.action_space.n
 episode_max_length = 500
 discount = 0.99
-batch_size = 16
+batch_size = 20
 num_job_sets = 1000
 render = True
 buffer_size = 100000
 lr = 0.001
 seed = 1234
 
-
-class Reward(object):
-    def __init__(self, factor, gamma):
-        # Reward parameters
-        self.factor = factor
-        self.gamma = gamma
-
-    # Set step rewards to total episode reward
-    def total(self, ep_batch, tot_reward):
-        for step in ep_batch:
-            step[2] = tot_reward * self.factor
-        return ep_batch
-
-    # Set step rewards to discounted reward
-    def discount(self, ep_batch):
-        x = ep_batch[:,2]
-
-        discounted = scipy.signal.lfilter([1], [1, -self.gamma], x[::-1], axis=0)[::-1]
-        discounted *= self.factor
-
-        for i in range(len(discounted)):
-            ep_batch[i,2] = discounted[i]
-
-        return ep_batch
-
-
 def __main__():
-    model = rl.model(sess, state_dim, action_dim, lr)
+    model = rl.model(sess, state_dim, action_dim, lr, network_widths=[300, 200, 30])
     sess.run(tf.initializers.global_variables())
-    replay_buffer = ReplayBuffer(buffer_size)
-    episode_buffer = np.empty((0, 5), float)
-    reward = Reward(0.1, discount)
     sigma = np.diag(0.3 * np.ones(action_dim, dtype=np.float32))
 
     for current_job_cnt in range(num_job_sets):
@@ -85,14 +57,6 @@ def __main__():
                     for i in range(len(list_r)):
                         y_i = np.sum(disc_vec[i:]) / (discount ** i)
                         list_y.append(y_i)
-                    """
-                    print("y: ", list_y)
-                    print("r: ", list_r)
-                    print("s: ", list_s)
-                    print("")
-                    print("")
-                    print("")
-                    """
                     job_buffer.append((list_s, list_a, list_r, list_y))
                     rewards.append(ep_len)
                     break
@@ -120,7 +84,6 @@ def __main__():
                 y = job_buffer[i][3][t]
                 b = baseline[t]
                 var = y - b
-                var = y
                 ss.append(s)
                 aa.append(a)
                 vv.append(var)
