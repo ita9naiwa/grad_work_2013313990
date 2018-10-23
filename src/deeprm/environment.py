@@ -96,7 +96,7 @@ class Env:
             image_repr[: self.job_backlog.curr_size // backlog_width,
                        ir_pt: ir_pt + backlog_width] = 1
             if self.job_backlog.curr_size % backlog_width > 0:
-                image_repr[self.job_backlog.curr_size / backlog_width,
+                image_repr[self.job_backlog.curr_size // backlog_width,
                            ir_pt: ir_pt + self.job_backlog.curr_size % backlog_width] = 1
             ir_pt += backlog_width
 
@@ -226,6 +226,7 @@ class Env:
 
                         to_backlog = True
                         for i in range(self.pa.num_nw):
+
                             if self.job_slot.slot[i] is None:  # put in new visible job slots
                                 self.job_slot.slot[i] = new_job
                                 self.job_record.record[new_job.id] = new_job

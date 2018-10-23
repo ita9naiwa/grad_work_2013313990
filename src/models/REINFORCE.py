@@ -22,8 +22,9 @@ class model(object):
         #is it automatically flattend?
         #otherwise, manually flat inputs
         w_init = tflearn.initializations.truncated_normal(stddev=0.01)
+        b_init = tflearn.initializations.zeros()
         states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
-        net = tflearn.fully_connected(inputs, self.network_widths[0], weights_init=w_init)
+        net = tflearn.fully_connected(inputs, self.network_widths[0], weights_init=w_init, bias_init=b_init)
         #net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
         for network_width in self.network_widths[1:]:

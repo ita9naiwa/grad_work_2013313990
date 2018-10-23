@@ -1,3 +1,4 @@
+import pickle
 from tqdm import tqdm
 import tensorflow as tf
 import gym
@@ -14,15 +15,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 pa = Parameters()
 pa.num_ex = 50
-max_episode_length = pa.episode_max_length = 400
 env = Env(pa)
 ob = env.reset()
 ob = flatten(ob)
 del env
-
 sess = tf.Session()
 state_dim = len(ob)
-action_dim = pa.num_res + 1
+action_dim = pa.res_slot + 1
 discount_factor = 1.00
 batch_size = 100
 num_episodes = 1000
@@ -30,30 +29,28 @@ num_episodes = 1000
 lr = 0.001
 print(ob.shape)
 
+chosen_action_dist = [0 for _ in range(pa.res_slot + 1)]
+
+def calc_entropy(p):
+    p = p + 0.0001
+    ret = -np.sum(np.log(p) * p)
+    if np.isinf(ret):
+        return 0
+    else:
+        return ret
+
 def generate_sequence_work(pa, seed=42):
-
     np.random.seed(seed)
-
     simu_len = pa.simu_len * pa.num_ex
-
     nw_dist = pa.dist.bi_model_dist
-
     nw_len_seq = np.zeros(simu_len, dtype=int)
     nw_size_seq = np.zeros((simu_len, pa.num_res), dtype=int)
-
     for i in range(simu_len):
-
         if np.random.rand() < pa.new_job_rate:  # a new job comes
-
             nw_len_seq[i], nw_size_seq[i, :] = nw_dist()
-
-    nw_len_seq = np.reshape(nw_len_seq,
-                            [pa.num_ex, pa.simu_len])
-    nw_size_seq = np.reshape(nw_size_seq,
-                             [pa.num_ex, pa.simu_len, pa.num_res])
-
+    nw_len_seq = np.reshape(nw_len_seq, [pa.num_ex, pa.simu_len])
+    nw_size_seq = np.reshape(nw_size_seq, [pa.num_ex, pa.simu_len, pa.num_res])
     return nw_len_seq, nw_size_seq
-
 
 nw_len_seqs, nw_size_seqs = generate_sequence_work(pa, seed=42)
 
@@ -62,17 +59,15 @@ for ex in range(pa.num_ex):
     env = Env(pa, nw_len_seqs=nw_len_seqs, nw_size_seqs=nw_size_seqs, end='all_done')
     env.seq_no = ex
     envs.append(env)
-
+with open('test_env.pickle', 'rb') as f:
+    te_env = pickle.load(f)
 
 def flatten(m, a=state_dim):
     return np.reshape(m, newshape=(state_dim,))
 
-
-model = reinforce.model(sess, state_dim, action_dim, lr, network_widths=[20, 20, 20])
+model = reinforce.model(sess, state_dim, action_dim, lr, network_widths=[20])
 sess.run(tf.initializers.global_variables())
-sigma = np.diag(0.3 * np.ones(action_dim, dtype=np.float32))
-
-
+action_space = np.arange(action_dim)
 def get_ith_handle(model, idx):
     env = envs[idx]
     job_buffer = []
@@ -111,7 +106,6 @@ def get_ith_handle(model, idx):
 
     return ret, baseline, rewards, slowdowns, ep_lens
 
-
 def get_traj(env, model):
     ep_reward = 0.0
     s = env.reset()
@@ -120,11 +114,12 @@ def get_traj(env, model):
     list_a = []
     list_r = []
     list_y = []
-    for ep_len in range(max_episode_length):
+    for ep_len in range(pa.episode_max_length):
 
         a = model.get_action_dist(s)
         csprob_n = np.cumsum(a)
         action = (csprob_n > np.random.rand()).argmax()
+        chosen_action_dist[action] = chosen_action_dist[action] + 1
         s2, r, done, info = env.step(action)
         s2 = flatten(s2)
         list_s.append(s)
@@ -151,13 +146,13 @@ for i_episode in range(num_episodes):
     futures = []
     slowdowns = []
     ep_lens = []
-    with ThreadPoolExecutor(max_workers=7) as exec:
-        for ex in tqdm(range(pa.num_ex)):
+    with ThreadPoolExecutor(max_workers=12) as exec:
+        for ex in range(pa.num_ex):
             futures.append(exec.submit(get_ith_handle, model, ex))
 
     concurrent.futures.wait(futures)
     advs = []
-    for i in tqdm(range(pa.num_ex)):
+    for i in range(pa.num_ex):
         job_buffer, baseline, rew, sd, eplen = futures[i].result()
         job_buffers.append(job_buffer)
         baselines.append(baseline)
@@ -166,7 +161,6 @@ for i_episode in range(num_episodes):
         ep_lens.append(eplen)
 
     # compute baseline
-
     ss = []
     aa = []
     vv = []
@@ -182,7 +176,26 @@ for i_episode in range(num_episodes):
             ss.append(s)
             aa.append(a)
             vv.append(adv)
+
     model.train(np.array(ss), np.array(aa), np.array(vv))
     print(
         "[episode %d] avg episode length %0.2f avg slowdown %0.2f, avg reward %0.2f" %
         (i_episode, np.mean(ep_lens), np.mean(slowdowns), np.mean(rewards)))
+    entropies = []
+    slowdowns = []
+    for ex in range(pa.num_ex):
+        s = te_env.reset()
+        s = flatten(s)
+        te_env.seq_no = ex
+        for ep_len in range(pa.episode_max_length):
+            a = model.get_action_dist(s)
+            entropies.append(calc_entropy(a))
+            action = np.random.choice(action_space, p=a)
+            s2, r, done, info = te_env.step(action)
+            s2 = flatten(s2)
+            if done:
+                break
+            s = s2
+        slowdown = get_avg_slowdown(info)
+        slowdowns.append(slowdown)
+    print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" % (i_episode, np.mean(slowdowns), np.mean(entropies)))
