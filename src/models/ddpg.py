@@ -54,6 +54,21 @@ class DDPG(object):
                 tf.multiply(param[i], self.tau) + tf.multiply(target_param[i], 1. - self.tau))
                 for i in range(len(param))]
 
+        #target sup_pred
+        self.pred_p = self.actor['out']
+        self.input_actions = tflearn.input_data(shape=(None, self.action_dim))
+        self.sup_obj = tf.reduce_mean(tflearn.objectives.categorical_crossentropy(self.pred_p, self.input_actions))
+        self.optimizer_sup_actor_loss = tf.train.AdamOptimizer(0.001).minimize(self.sup_obj)
+    def train_actor_sup(self, states, target_actions):
+        actions = np.zeros(shape=(states.shape[0], self.action_dim))
+        for i, t in enumerate(target_actions):
+            actions[i, t] = 1.0
+
+        return self.sess.run([self.sup_obj, self.optimizer_sup_actor_loss],
+            feed_dict={
+                self.actor['states']: states,
+                self.input_actions: actions})[0]
+
 
     def get_q(self, critic, states, actions):
         return self.sess.run(critic['out'],
@@ -129,15 +144,17 @@ class DDPG(object):
         with tf.variable_scope(namescope):
             states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
             actions = tflearn.input_data(shape=(None, self.action_dim), dtype=tf.float32, name="actions")
-            net_l = tflearn.fully_connected(inputs, 200, weights_init=w_init)
+            net_l = tflearn.fully_connected(inputs, 50, weights_init=w_init)
             net_l = tflearn.layers.normalization.batch_normalization(net_l)
             net_l = tflearn.activations.relu(net_l)
-            net_a = tflearn.fully_connected(actions, 200, weights_init=w_init)
+            net_a = tflearn.fully_connected(actions, 50, weights_init=w_init)
             net_a = tflearn.layers.normalization.batch_normalization(net_a)
             net_a = tflearn.activations.relu(net_a)
 
             net = tflearn.layers.merge_ops.merge([net_l, net_a], mode='concat')
-            net = tflearn.fully_connected(net, 200, weights_init=w_init)
+            net = tflearn.fully_connected(net, 50, weights_init=w_init)
+            net = tflearn.activations.relu(net)
+            net = tflearn.fully_connected(net, 100, weights_init=w_init)
             net = tflearn.activations.relu(net)
             o = tflearn.fully_connected(net, 1)
 
@@ -156,14 +173,12 @@ class DDPG(object):
         with tf.variable_scope(namescope):
             w_init = tflearn.initializations.normal(stddev=0.01)
             states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32)
-            net = tflearn.fully_connected(inputs, 20, weights_init=w_init)
+            net = tflearn.fully_connected(inputs, 100, weights_init=w_init)
             net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
-            """
-            net = tflearn.fully_connected(net, 20, weights_init=w_init)
+            net = tflearn.fully_connected(net, 50, weights_init=w_init)
             net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
-            """
             out = tflearn.fully_connected(net, self.action_dim, weights_init=w_init)
             if self.use_softmax:
                 out = tflearn.activations.softmax(out)

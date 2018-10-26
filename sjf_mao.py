@@ -40,7 +40,7 @@ def generate_sequence_work(pa, seed=42):
 
 te_nw_len_seqs, te_nw_size_seqs = generate_sequence_work(pa, seed=42)
 print('write new test data')
-te_env = Env(pa, nw_len_seqs=te_nw_len_seqs, nw_size_seqs=te_nw_size_seqs, end='all_done')
+te_env = Env(pa, nw_len_seqs=te_nw_len_seqs, nw_size_seqs=te_nw_size_seqs, end='all_done', reward_type='done')
 
 with open('test_env.pickle', 'wb') as p:
     pickle.dump(te_env, p)

@@ -6,8 +6,9 @@ import matplotlib.pyplot as plt
 
 class Env:
     def __init__(self, pa, nw_len_seqs=None, nw_size_seqs=None,
-                 seed=42, render=False, repre='image', end='no_new_job'):
+                 seed=42, render=False, repre='image', end='no_new_job', reward_type='delay'):
 
+        self.reward_type = reward_type
         self.pa = pa
         self.render = render
         self.repre = repre  # image or compact representation
@@ -16,7 +17,7 @@ class Env:
         self.nw_dist = pa.dist.bi_model_dist
 
         self.curr_time = 0
-
+        self.chosen_job_id = -1
         # set up random seed
         if self.pa.unseen:
             np.random.seed(314159)
@@ -162,24 +163,36 @@ class Env:
         plt.show()     # manual
         # plt.pause(0.01)  # automatic
 
-    def get_reward(self):
+    def get_reward(self, ):
 
         reward = 0
-        for j in self.machine.running_job:
-            reward += self.pa.delay_penalty / float(j.len)
+        if self.reward_type  == "delay":
+            for j in self.machine.running_job:
+                reward += self.pa.delay_penalty / float(j.len)
 
-        for j in self.job_slot.slot:
-            if j is not None:
-                reward += self.pa.hold_penalty / float(j.len)
+            for j in self.job_slot.slot:
+                if j is not None:
+                    reward += self.pa.hold_penalty / float(j.len)
 
-        for j in self.job_backlog.backlog:
-            if j is not None:
-                reward += self.pa.dismiss_penalty / float(j.len)
+            for j in self.job_backlog.backlog:
+                if j is not None:
+                    reward += self.pa.dismiss_penalty / float(j.len)
+        elif self.reward_type == "mine":
+            a = self.chosen_job_id
+            if a != -1:
+                job = self.job_slot.slot[a]
+                duration = job.len
+                enter_time = job.enter_time
+                delay = (self.curr_time + duration - enter_time)
+                reward = 1.0
+
 
         return reward
 
+
     def step(self, a, repeat=False):
 
+        self.chosen_job_id = -1
         status = None
 
         done = False
@@ -196,6 +209,7 @@ class Env:
                 status = 'MoveOn'
             else:
                 status = 'Allocate'
+                self.chosen_job_id = a
 
         if status == 'MoveOn':
             self.curr_time += 1
@@ -247,9 +261,9 @@ class Env:
             reward = self.get_reward()
 
         elif status == 'Allocate':
+            reward = self.get_reward()
             self.job_record.record[self.job_slot.slot[a].id] = self.job_slot.slot[a]
             self.job_slot.slot[a] = None
-
             # dequeue backlog
             if self.job_backlog.curr_size > 0:
                 self.job_slot.slot[a] = self.job_backlog.backlog[0]  # if backlog empty, it will be 0
@@ -257,10 +271,10 @@ class Env:
                 self.job_backlog.backlog[-1] = None
                 self.job_backlog.curr_size -= 1
 
+
         ob = self.observe()
 
         info = self.job_record
-
         if done:
             self.seq_idx = 0
 

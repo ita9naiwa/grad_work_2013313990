@@ -21,9 +21,8 @@ ob = flatten(ob)
 del env
 sess = tf.Session()
 state_dim = len(ob)
-action_dim = pa.res_slot + 1
+action_dim = pa.num_nw + 1
 discount_factor = 1.00
-batch_size = 100
 num_episodes = 1000
 
 lr = 0.001
@@ -68,6 +67,7 @@ def flatten(m, a=state_dim):
 model = reinforce.model(sess, state_dim, action_dim, lr, network_widths=[20])
 sess.run(tf.initializers.global_variables())
 action_space = np.arange(action_dim)
+
 def get_ith_handle(model, idx):
     env = envs[idx]
     job_buffer = []
@@ -75,11 +75,10 @@ def get_ith_handle(model, idx):
     slowdowns = []
     ep_lens = []
 
-    adv_list = [[] for ep in range(pa.num_seq_per_batch)]
 
     for ep in range(pa.num_seq_per_batch):
         job, ep_reward, slowdown, ep_len = get_traj(env, model)
-        job = (job[0], job[1], job[2], job[3], adv_list[ep])
+        job = (job[0], job[1], job[2], job[3], None)
         job_buffer.append(job)
         rewards.append(ep_reward)
         slowdowns.append(slowdown)
@@ -176,26 +175,27 @@ for i_episode in range(num_episodes):
             ss.append(s)
             aa.append(a)
             vv.append(adv)
-
     model.train(np.array(ss), np.array(aa), np.array(vv))
+
     print(
         "[episode %d] avg episode length %0.2f avg slowdown %0.2f, avg reward %0.2f" %
         (i_episode, np.mean(ep_lens), np.mean(slowdowns), np.mean(rewards)))
-    entropies = []
-    slowdowns = []
-    for ex in range(pa.num_ex):
-        s = te_env.reset()
-        s = flatten(s)
-        te_env.seq_no = ex
-        for ep_len in range(pa.episode_max_length):
-            a = model.get_action_dist(s)
-            entropies.append(calc_entropy(a))
-            action = np.random.choice(action_space, p=a)
-            s2, r, done, info = te_env.step(action)
-            s2 = flatten(s2)
-            if done:
-                break
-            s = s2
-        slowdown = get_avg_slowdown(info)
-        slowdowns.append(slowdown)
-    print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" % (i_episode, np.mean(slowdowns), np.mean(entropies)))
+    if(i_episode+1) % 10 == 0:
+        entropies = []
+        slowdowns = []
+        for ex in range(pa.num_ex):
+            s = te_env.reset()
+            s = flatten(s)
+            te_env.seq_no = ex
+            for ep_len in range(pa.episode_max_length):
+                a = model.get_action_dist(s)
+                entropies.append(calc_entropy(a))
+                action = np.random.choice(action_space, p=a)
+                s2, r, done, info = te_env.step(action)
+                s2 = flatten(s2)
+                if done:
+                    break
+                s = s2
+            slowdown = get_avg_slowdown(info)
+            slowdowns.append(slowdown)
+        print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" % (i_episode, np.mean(slowdowns), np.mean(entropies)))
