@@ -20,7 +20,7 @@ class model(object):
 
         self.states = tf.placeholder(tf.float32, [None, self.state_dim], 'state')
         self.actions = tf.placeholder(tf.int32, [None, ], 'action')
-        self.advantages = tf.placeholder(tf.float32, [None, 1], 'advantage')
+        self.advantages = tf.placeholder(tf.float32, [None, ], 'advantage')
 
         self.out, self.params = self._create_network('new')
         self.old_out, old_params = self._create_network('old')
@@ -71,8 +71,8 @@ class model(object):
         self.sess.run(self.update_old_op)
         losses = []
         for _ in range(self.update_step):
-            loss = self.sess.run([self.loss, self.atrain_op],
-                feed_dict={self.states: s, self.action: a, self.advantages: adv})[0]
+            loss = self.sess.run([self.loss, self.train_op],
+                feed_dict={self.states: s, self.actions: a, self.advantages: adv})[0]
             losses.append(loss)
         print("temporal loss: %0.2f" % np.mean(losses))
         return losses
