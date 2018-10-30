@@ -3,17 +3,22 @@ import tflearn
 import numpy as np
 
 class model(object):
-    def __init__(self, sess, state_dim, action_dim, learning_rate, network_widths=[300, 200, 30]):
+    def __init__(self, sess, state_dim, action_dim, learning_rate, network_widths=[300, 200, 30],
+                 update_step=15, epsilon=0.2):
+
         if sess != None:
             self.sess = sess
         else:
             sess = tf.Session()
+
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.learning_rate = learning_rate
         self.network_widths = network_widths
+        self.update_step = update_step
+        self.epsilon = 0.2
 
-        self.states = tf.placeholder(tf.float32, [None, action_dim], 'state')
+        self.states = tf.placeholder(tf.float32, [None, self.state_dim], 'state')
         self.actions = tf.placeholder(tf.int32, [None, ], 'action')
         self.advantages = tf.placeholder(tf.float32, [None, 1], 'advantage')
 
@@ -22,9 +27,17 @@ class model(object):
 
         self.update_old_op = [oldp.assign(p) for p, oldp in zip(self.params, old_params)]
 
+        a_indices = tf.stack([tf.range(tf.shape(self.actions)[0], dtype=tf.int32), self.actions], axis=1)
 
+        pi = tf.gather_nd(self.out, a_indices)
+        oldpi = tf.gather_nd(self.old_out, a_indices)
+
+        ratio = pi / oldpi
+
+        surr = ratio * self.advantages
+        self.loss = -tf.reduce_mean(tf.minimum(surr, tf.clip_by_value(ratio, 1. - self.epsilon, 1. + self.epsilon) * self.advantages))
+        self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
         self.sess.run(tf.global_variables_initializer())
-
 
     def _create_network(self, name):
         #is it automatically flattend?
@@ -43,9 +56,6 @@ class model(object):
             out = tflearn.fully_connected(net, self.action_dim)
             out = tflearn.activations.softmax(out)
         parameters = tf.trainable_variables(name)
-
-        optimizer = (tf.train.AdamOptimizer(self.learning_rate).apply_gradients(zip(gradients, parameters)))
-
         return out, parameters
         # Supervised Learning
 
@@ -54,15 +64,15 @@ class model(object):
 
     def get_action(self, states):
         return self.sess.run(self.out,
-                feed_dict={self.state_holder: states})
+                feed_dict={self.states: states})
 
     def train(self, states, actions, values):
-        [self.loss, self.optimizer]
-        ret =  self.sess.run([self.indices, self.optimizer],
-                feed_dict={
-                    self.state_holder: states,
-                    self.actions_holder: actions,
-                    self.values_holder: values,
-                    self.N: len(actions)})[0]
-        #print(ret)
-        return ret
+        s, a, adv = states, actions, values
+        self.sess.run(self.update_old_op)
+        losses = []
+        for _ in range(self.update_step):
+            loss = self.sess.run([self.loss, self.atrain_op],
+                feed_dict={self.states: s, self.action: a, self.advantages: adv})[0]
+            losses.append(loss)
+        print("temporal loss: %0.2f" % np.mean(losses))
+        return losses
