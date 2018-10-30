@@ -182,16 +182,16 @@ class Env:
             #if a ==
 
             if a == -11:
-                reward = -0.03
+                reward = -1
             elif a == -12:
-                reward = -0.03
+                reward = -1
             elif a >= 0:
                 job = self.job_slot.slot[a]
                 duration = job.len
                 enter_time = job.enter_time
                 finish_time = self.curr_time + duration
                 delay = (finish_time - enter_time)
-                reward = 0.03 + (duration / delay)
+                reward = duration
 
 
 

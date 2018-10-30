@@ -15,7 +15,6 @@ class SJF_model(object):
         pass
 
 pa = Parameters()
-pa.episode_max_length=200
 pa.compute_dependent_parameters()
 """
 try:
@@ -38,8 +37,8 @@ def generate_sequence_work(pa, seed=42):
     nw_size_seq = np.reshape(nw_size_seq, [pa.num_ex, pa.simu_len, pa.num_res])
     return nw_len_seq, nw_size_seq
 
-te_nw_len_seqs, te_nw_size_seqs = generate_sequence_work(pa, seed=42)
-print('write new test data')
+te_nw_len_seqs, te_nw_size_seqs = generate_sequence_work(pa, seed=11)
+print('write new test data??')
 te_env = Env(pa, nw_len_seqs=te_nw_len_seqs, nw_size_seqs=te_nw_size_seqs, end='all_done', reward_type='done')
 
 with open('test_env.pickle', 'wb') as p:
@@ -52,7 +51,7 @@ slowdowns = []
 rewards = []
 sd = []
 
-for i_episode in range(pa.num_ex):
+for i_episode in range(100):
     te_env.num_ex = i_episode
     ep_reward = 0.0
     ep_ave_max_q = 0.0
