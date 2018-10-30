@@ -7,6 +7,7 @@ import src.deeprm.parameters as parameters
 import src.models.REINFORCE_PPO as reinforce_pro
 import src.deeprm.environment as environment
 from src.models.buffer import ReplayBuffer
+import gym, threading, queue
 
 import src.models.ddpg as ddpg
 
@@ -22,12 +23,12 @@ state_dim = (pa.network_input_width * pa.network_input_height)
 action_dim = pa.num_nw + 1
 print("State dim: ", state_dim, "action_dim", action_dim)
 discount_factor = 1.00
-batch_size = 64
 num_episodes = 10000
 render = True
 
 lr = 0.001
 seed = 1234
+QUEUE = queue.Queue()
 
 sess = tf.Session()
 #model = ddpg.DDPG(sess, action_dim, state_dim, actor_lr, critic_lr, tau=tau, use_softmax=True)
