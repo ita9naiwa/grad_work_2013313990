@@ -145,7 +145,7 @@ def process_all_info(trajs):
 
 def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
 
-    env = environment.Env(pa, render=render, repre=repre, end=end, reward_type='mine')
+    env = environment.Env(pa, render=render, repre=repre, end=end, reward_type='delay')
     # ----------------------------
     print("Preparing for data...")
     # ----------------------------

@@ -19,8 +19,8 @@ EP_MAX = 1000
 EP_LEN = 500
 N_WORKER = 8                # parallel workers
 GAMMA = 0.9                 # reward discount factor
-A_LR = 0.001               # learning rate for actor
-C_LR = 0.001               # learning rate for critic
+A_LR = 0.0001               # learning rate for actor
+C_LR = 0.0001               # learning rate for critic
 MIN_BATCH_SIZE = 64         # minimum batch size for updating PPO
 UPDATE_STEP = 15            # loop update operation n-steps
 EPSILON = 0.2               # for clipping surrogate objective
@@ -61,7 +61,7 @@ class PPONet(object):
         a_indices = tf.stack([tf.range(tf.shape(self.tfa)[0], dtype=tf.int32), self.tfa], axis=1)
         pi_prob = tf.gather_nd(params=self.pi, indices=a_indices)   # shape=(None, )
         oldpi_prob = tf.gather_nd(params=oldpi, indices=a_indices)  # shape=(None, )
-        ratio = pi_prob / oldpi_prob
+        ratio = pi_prob/oldpi_prob
         surr = ratio * self.tfadv                       # surrogate loss
 
         self.aloss = -tf.reduce_mean(tf.minimum(        # clipped surrogate objective
