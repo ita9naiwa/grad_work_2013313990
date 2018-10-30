@@ -20,21 +20,18 @@ buffer_size = 100000
 replay_buffer = ReplayBuffer(buffer_size)
 state_dim = (pa.network_input_width * pa.network_input_height)
 action_dim = pa.num_nw + 1
-print("State dim: ", state_dim,"action_dim", action_dim)
+print("State dim: ", state_dim, "action_dim", action_dim)
 discount_factor = 1.00
-batch_size = 32
+batch_size = 64
 num_episodes = 10000
 render = True
-buffer_size = 100000
+
 lr = 0.001
-actor_lr = 0.001
-critic_lr = 0.01
-tau = 1.0
 seed = 1234
 
 sess = tf.Session()
 #model = ddpg.DDPG(sess, action_dim, state_dim, actor_lr, critic_lr, tau=tau, use_softmax=True)
-model = reinforce_pro.model(sess, state_dim, action_dim, lr, network_widths=[30, 20])
+model = reinforce_pro.model(sess, state_dim, action_dim, lr, network_widths=[50, 40])
 sess.run(tf.initializers.global_variables())
 def discount(x, gamma):
     """

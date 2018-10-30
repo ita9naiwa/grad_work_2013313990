@@ -6,7 +6,7 @@ class model(object):
     def __init__(self, sess, state_dim, action_dim, learning_rate, network_widths=[300, 200, 30],
                  update_step=15, epsilon=0.2):
 
-        if sess != None:
+        if sess is not None:
             self.sess = sess
         else:
             sess = tf.Session()
@@ -50,7 +50,7 @@ class model(object):
             net = tflearn.activations.relu(net)
             for network_width in self.network_widths[1:]:
                 net = tflearn.fully_connected(net, network_width, weights_init=w_init)
-                net = tflearn.layers.normalization.batch_normalization(net)
+                #net = tflearn.layers.normalization.batch_normalization(net)
                 net = tflearn.activations.relu(net)
 
             out = tflearn.fully_connected(net, self.action_dim)
