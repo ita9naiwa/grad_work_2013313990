@@ -179,12 +179,20 @@ class Env:
                     reward += self.pa.dismiss_penalty / float(j.len)
         elif self.reward_type == "mine":
             a = self.chosen_job_id
-            if a != -1:
+            #if a ==
+
+            if a == -11:
+                reward = -0.03
+            elif a == -12:
+                reward = -0.03
+            elif a >= 0:
                 job = self.job_slot.slot[a]
                 duration = job.len
                 enter_time = job.enter_time
-                delay = (self.curr_time + duration - enter_time)
-                reward = 1.0
+                finish_time = self.curr_time + duration
+                delay = (finish_time - enter_time)
+                reward = 0.03 + (duration / delay)
+
 
 
         return reward
@@ -203,10 +211,12 @@ class Env:
             status = 'MoveOn'
         elif self.job_slot.slot[a] is None:  # implicit void action
             status = 'MoveOn'
+            self.chosen_job_id = -11
         else:
             allocated = self.machine.allocate_job(self.job_slot.slot[a], self.curr_time)
             if not allocated:  # implicit void action
                 status = 'MoveOn'
+                self.chosen_job_id = -12
             else:
                 status = 'Allocate'
                 self.chosen_job_id = a
@@ -239,13 +249,27 @@ class Env:
                     if new_job.len > 0:  # a new job comes
 
                         to_backlog = True
+                        """
                         for i in range(self.pa.num_nw):
-
                             if self.job_slot.slot[i] is None:  # put in new visible job slots
                                 self.job_slot.slot[i] = new_job
                                 self.job_record.record[new_job.id] = new_job
                                 to_backlog = False
                                 break
+
+                        """
+                        emptys = []
+                        for i in range(self.pa.num_nw):
+                            if self.job_slot.slot[i] is None:
+                                emptys.append(i)
+                        if len(emptys) > 0:
+                            i = np.random.choice(emptys)
+                            self.job_slot.slot[i] = new_job
+                            self.job_record.record[new_job.id] = new_job
+                            to_backlog = False
+
+
+
 
                         if to_backlog:
                             if self.job_backlog.curr_size < self.pa.backlog_size:

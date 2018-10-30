@@ -23,6 +23,10 @@ class ReplayBuffer(object):
             self.buffer.popleft()
             self.buffer.append(experience)
 
+    def clear(self):
+        self.count = 0
+        self.buffer.clear()
+
     def size(self):
         return self.count
 
@@ -31,7 +35,7 @@ class ReplayBuffer(object):
 
         if self.count < batch_size:
             raise IndexError("buffer size is smaller than requested batch size")
-            
+
 
         batch = random.sample(self.buffer, batch_size)
 

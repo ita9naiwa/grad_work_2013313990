@@ -5,6 +5,7 @@ import numpy as np
 class DDPG(object):
     def __init__(
         self, sess, action_dim, state_dim,
+        discount=0.9,
         actor_learning_rate=0.0001, critic_learning_rate=0.001,
         tau=0.001, use_softmax=False):
         if sess != None:
@@ -119,7 +120,7 @@ class DDPG(object):
             if t_i[k] is True:
                 y_i[k, 0] = r_i
             else:
-                y_i[k, 0] = r_i[k] + self.discount * target_q_j[k,0]
+                y_i[k, 0] = r_i[k] + self.discount * target_q_j[k, 0]
 
         #print(a_i)
 
@@ -140,22 +141,23 @@ class DDPG(object):
 
     def create_critic_network(self, namescope):
 
-        w_init = tflearn.initializations.truncated_normal(stddev=0.01)
+        w_init = tflearn.initializations.xavier()
         with tf.variable_scope(namescope):
             states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
             actions = tflearn.input_data(shape=(None, self.action_dim), dtype=tf.float32, name="actions")
-            net_l = tflearn.fully_connected(inputs, 50, weights_init=w_init)
-            net_l = tflearn.layers.normalization.batch_normalization(net_l)
+            net_l = tflearn.fully_connected(inputs, 250, weights_init=w_init)
+            #net_l = tflearn.layers.normalization.batch_normalization(net_l)
             net_l = tflearn.activations.relu(net_l)
             net_a = tflearn.fully_connected(actions, 50, weights_init=w_init)
-            net_a = tflearn.layers.normalization.batch_normalization(net_a)
+            #net_a = tflearn.layers.normalization.batch_normalization(net_a)
             net_a = tflearn.activations.relu(net_a)
 
             net = tflearn.layers.merge_ops.merge([net_l, net_a], mode='concat')
-            net = tflearn.fully_connected(net, 50, weights_init=w_init)
+            net = tflearn.fully_connected(net, 150, weights_init=w_init)
             net = tflearn.activations.relu(net)
             net = tflearn.fully_connected(net, 100, weights_init=w_init)
             net = tflearn.activations.relu(net)
+
             o = tflearn.fully_connected(net, 1)
 
         parameters = tf.trainable_variables(namescope)
@@ -170,14 +172,18 @@ class DDPG(object):
     def create_actor_network(self, namescope):
         #is it automatically flattend?
         #otherwise, manually flat inputs
+        w_init = tflearn.initializations.xavier()
         with tf.variable_scope(namescope):
-            w_init = tflearn.initializations.normal(stddev=0.01)
+
             states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32)
-            net = tflearn.fully_connected(inputs, 100, weights_init=w_init)
-            net = tflearn.layers.normalization.batch_normalization(net)
+            net = tflearn.fully_connected(inputs, 200, weights_init=w_init)
+            #net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
-            net = tflearn.fully_connected(net, 50, weights_init=w_init)
-            net = tflearn.layers.normalization.batch_normalization(net)
+            net = tflearn.fully_connected(net, 100, weights_init=w_init)
+            #net = tflearn.layers.normalization.batch_normalization(net)
+            net = tflearn.activations.relu(net)
+            net = tflearn.fully_connected(net, 80, weights_init=w_init)
+            #net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
             out = tflearn.fully_connected(net, self.action_dim, weights_init=w_init)
             if self.use_softmax:
