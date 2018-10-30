@@ -4,7 +4,7 @@ import numpy as np
 
 class model(object):
     def __init__(self, sess, state_dim, action_dim, learning_rate, network_widths=[300, 200, 30],
-                 update_step=10, epsilon=0.2):
+                 update_step=15, epsilon=0.2):
 
         if sess is not None:
             self.sess = sess
