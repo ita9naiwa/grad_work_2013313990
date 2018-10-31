@@ -112,9 +112,7 @@ def get_traj(agent, env, episode_max_length):
 
         obs.append(ob)  # store the ob at current decision making step
         acts.append(a)
-
         ob, rew, done, info = env.step(a, repeat=True)
-
         rews.append(rew)
         entropy.append(get_entropy(act_prob))
 
@@ -221,6 +219,7 @@ class traj_worker(object):
                 trajs.append(traj)
             if b is True:
                 continue
+            all_eplens = [len(traj['reward']) for traj in trajs]
 
             all_ob = concatenate_all_ob(trajs, pa)
             # Compute discounted sums of rewards
@@ -257,7 +256,8 @@ class traj_worker(object):
             if GLOBAL_EP >= EP_MAX:
                 COORD.request_stop()
 
-            print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid, '|avg slowdown: %.2f' % np.mean(all_slowdown))
+            print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid, '|avg slowdown: %.2f' % np.mean(all_slowdown),
+            'avg ep len : %0.1f' % np.mean(all_eplens))
 
 
 import pickle
