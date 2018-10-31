@@ -22,7 +22,7 @@ replay_buffer = ReplayBuffer(buffer_size)
 state_dim = (pa.network_input_width * pa.network_input_height)
 action_dim = pa.num_nw + 1
 print("State dim: ", state_dim, "action_dim", action_dim)
-discount_factor = 1.00
+discount_factor = 0.99
 num_episodes = 10000
 render = True
 
@@ -151,9 +151,6 @@ def process_all_info(trajs):
     job_len = np.concatenate(job_len)
 
     return enter_time, finish_time, job_len
-
-
-
 
 def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
 

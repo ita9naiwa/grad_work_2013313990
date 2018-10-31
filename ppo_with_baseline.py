@@ -1,185 +1,205 @@
-"""
-A simple version of OpenAI's Proximal Policy Optimization (PPO). [https://arxiv.org/abs/1707.06347]
-Distributing workers in parallel to collect data, then stop worker's roll-out and train PPO on collected data.
-Restart workers once PPO is updated.
-The global PPO updating rule is adopted from DeepMind's paper (DPPO):
-Emergence of Locomotion Behaviours in Rich Environments (Google Deepmind): [https://arxiv.org/abs/1707.02286]
-View more on my tutorial website: https://morvanzhou.github.io/tutorials
-Dependencies:
-tensorflow 1.8.0
-gym 0.9.2
-"""
-
+import pickle
+from tqdm import tqdm
 import tensorflow as tf
+import gym
 import numpy as np
-import matplotlib.pyplot as plt
-import gym, threading, queue
+from time import sleep
+import src.models.REINFORCE as reinforce
+import src.models.REINFORCE_PPO as reinforce
+from src.models.buffer import ReplayBuffer
+from src.summary import summary
+from src.utils import *
+from src.deeprm.parameters import Parameters, Dist
+from src.deeprm.environment import Env
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 
-EP_MAX = 1000
-EP_LEN = 500
-N_WORKER = 8                # parallel workers
-GAMMA = 0.9                 # reward discount factor
-A_LR = 0.0001               # learning rate for actor
-MIN_BATCH_SIZE = 64         # minimum batch size for updating PPO
-UPDATE_STEP = 15            # loop update operation n-steps
-EPSILON = 0.2               # for clipping surrogate objective
-GAME = 'CartPole-v0'
+pa = Parameters()
+pa.num_ex = 50
+env = Env(pa)
+ob = env.reset()
+ob = flatten(ob)
+del env
+sess = tf.Session()
+state_dim = len(ob)
+action_dim = pa.num_nw + 1
+discount_factor = 1.00
+num_episodes = 1000
 
-env = gym.make(GAME)
-S_DIM = env.observation_space.shape[0]
-A_DIM = env.action_space.n
+lr = 0.0003
+update_step = 50
+print(ob.shape)
 
+chosen_action_dist = [0 for _ in range(pa.res_slot + 1)]
 
-class PPONet(object):
-    def __init__(self):
-        self.sess = tf.Session()
-        self.tfs = tf.placeholder(tf.float32, [None, S_DIM], 'state')
-        self.tfa = tf.placeholder(tf.int32, [None, ], 'action')
+def calc_entropy(p):
+    p = p + 0.0001
+    ret = -np.sum(np.log(p) * p)
+    if np.isinf(ret):
+        return 0
+    else:
+        return ret
 
+def generate_sequence_work(pa, seed=42):
+    np.random.seed(seed)
+    simu_len = pa.simu_len * pa.num_ex
+    nw_dist = pa.dist.bi_model_dist
+    nw_len_seq = np.zeros(simu_len, dtype=int)
+    nw_size_seq = np.zeros((simu_len, pa.num_res), dtype=int)
+    for i in range(simu_len):
+        if np.random.rand() < pa.new_job_rate:  # a new job comes
+            nw_len_seq[i], nw_size_seq[i, :] = nw_dist()
+    nw_len_seq = np.reshape(nw_len_seq, [pa.num_ex, pa.simu_len])
+    nw_size_seq = np.reshape(nw_size_seq, [pa.num_ex, pa.simu_len, pa.num_res])
+    return nw_len_seq, nw_size_seq
 
-        # actor
-        self.pi, pi_params = self._build_anet('pi', trainable=True)
-        oldpi, oldpi_params = self._build_anet('oldpi', trainable=False)
+nw_len_seqs, nw_size_seqs = generate_sequence_work(pa, seed=42)
 
-        self.update_oldpi_op = [oldp.assign(p) for p, oldp in zip(pi_params, oldpi_params)]
-        self.tfadv = tf.placeholder(tf.float32, [None, 1], 'advantage')
+envs = []
+for ex in range(pa.num_ex):
+    env = Env(pa, nw_len_seqs=nw_len_seqs, nw_size_seqs=nw_size_seqs, end='all_done')
+    env.seq_no = ex
+    envs.append(env)
+with open('test_env.pickle', 'rb') as f:
+    te_env = pickle.load(f)
 
-        a_indices = tf.stack([tf.range(tf.shape(self.tfa)[0], dtype=tf.int32), self.tfa], axis=1)
-        pi_prob = tf.gather_nd(params=self.pi, indices=a_indices)   # shape=(None, )
-        oldpi_prob = tf.gather_nd(params=oldpi, indices=a_indices)  # shape=(None, )
-        ratio = pi_prob / oldpi_prob
-        surr = ratio * self.tfadv                       # surrogate loss
+def flatten(m, a=state_dim):
+    return np.reshape(m, newshape=(state_dim,))
 
-        self.aloss = -tf.reduce_mean(tf.minimum(        # clipped surrogate objective
-            surr, tf.clip_by_value(ratio, 1. - EPSILON, 1. + EPSILON) * self.tfadv))
+model = reinforce.model(sess, state_dim, action_dim, lr,
+                network_widths=[30],
+                update_step=update_step)
+sess.run(tf.initializers.global_variables())
+action_space = np.arange(action_dim)
 
-        self.atrain_op = tf.train.AdamOptimizer(A_LR).minimize(self.aloss)
-        self.sess.run(tf.global_variables_initializer())
-
-    def update(self):
-        global GLOBAL_UPDATE_COUNTER
-        while not COORD.should_stop():
-            if GLOBAL_EP < EP_MAX:
-                UPDATE_EVENT.wait()                     # wait until get batch of data
-                self.sess.run(self.update_oldpi_op)     # copy pi to old pi
-                data = [QUEUE.get() for _ in range(QUEUE.qsize())]      # collect data from all workers
-                data = np.vstack(data)
-                s, a, r = data[:, :S_DIM], data[:, S_DIM: S_DIM + 1].ravel(), data[:, -1:]
-                adv = r
-                # update actor and critic in a update loop
-                [self.sess.run(self.atrain_op, {self.tfs: s, self.tfa: a, self.tfadv: adv}) for _ in range(UPDATE_STEP)]
-                UPDATE_EVENT.clear()        # updating finished
-                GLOBAL_UPDATE_COUNTER = 0   # reset counter
-                ROLLING_EVENT.set()         # set roll-out available
-
-    def _build_anet(self, name, trainable):
-        with tf.variable_scope(name):
-            l_a = tf.layers.dense(self.tfs, 50, tf.nn.relu, trainable=trainable)
-            l_a = tf.layers.dense(l_a, 50, tf.nn.relu, trainable=trainable)
-            a_prob = tf.layers.dense(l_a, A_DIM, tf.nn.softmax, trainable=trainable)
-        params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=name)
-        return a_prob, params
-
-    def choose_action(self, s):  # run by a local
-        prob_weights = self.sess.run(self.pi, feed_dict={self.tfs: s[None, :]})
-        action = np.random.choice(range(prob_weights.shape[1]),
-                                      p=prob_weights.ravel())  # select action w.r.t the actions prob
-        return action
+def get_ith_handle(model, idx):
+    env = envs[idx]
+    job_buffer = []
+    rewards = []
+    slowdowns = []
+    ep_lens = []
 
 
+    for ep in range(pa.num_seq_per_batch):
+        job, ep_reward, slowdown, ep_len = get_traj(env, model)
+        job = (job[0], job[1], job[2], job[3], None)
+        job_buffer.append(job)
+        rewards.append(ep_reward)
+        slowdowns.append(slowdown)
+        ep_lens.append(ep_len)
 
-class Worker(object):
-    def __init__(self, wid):
-        self.wid = wid
-        self.env = gym.make(GAME).unwrapped
-        self.ppo = GLOBAL_PPO
+    n_samples = len(job_buffer)
+    max_job_length = np.max([len(x[0]) for x in job_buffer])
+    baseline = np.zeros(shape=(n_samples, max_job_length), dtype=np.float32)
+    ep_lengths = []
 
-    def work(self):
-        global GLOBAL_EP, GLOBAL_RUNNING_R, GLOBAL_UPDATE_COUNTER
-        while not COORD.should_stop():
-            s = self.env.reset()
-            ep_r = 0
-            buffer_s, buffer_a, buffer_r = [], [], []
-            for t in range(EP_LEN):
-                if not ROLLING_EVENT.is_set():                  # while global PPO is updating
-                    ROLLING_EVENT.wait()                        # wait until PPO is updated
-                    buffer_s, buffer_a, buffer_r = [], [], []   # clear history buffer, use new policy to collect data
-                a = self.ppo.choose_action(s)
-                s_, r, done, _ = self.env.step(a)
+    for i in range(n_samples):
+        current_length = len(job_buffer[i][3])
+        ep_lengths.append(current_length)
+        baseline[i, :current_length] = job_buffer[i][3]
 
+    baseline = np.mean(baseline, axis=0)
+    ret = []
+    for ep in range(pa.num_seq_per_batch):
+        reward_list = job_buffer[ep][3]
+        adv = []
+        for t in range(len(reward_list)):
+            adv.append(reward_list[t] - baseline[t])
+        ret.append((job_buffer[ep][0], job_buffer[ep][1], job_buffer[ep][2], job_buffer[ep][3], adv))
+
+    return ret, baseline, rewards, slowdowns, ep_lens
+
+def get_traj(env, model):
+    ep_reward = 0.0
+    s = env.reset()
+    s = flatten(s)
+    list_s = []
+    list_a = []
+    list_r = []
+    list_y = []
+    for ep_len in range(pa.episode_max_length):
+
+        a = model.get_action_dist(s)
+        csprob_n = np.cumsum(a)
+        action = (csprob_n > np.random.rand()).argmax()
+        chosen_action_dist[action] = chosen_action_dist[action] + 1
+        s2, r, done, info = env.step(action)
+        s2 = flatten(s2)
+        list_s.append(s)
+        list_a.append(action)
+        list_r.append(r)
+        ep_reward += r
+        if done:
+            break
+        s = s2
+
+    slowdown = get_avg_slowdown(info)
+    list_y = discount(list_r, discount_factor)
+    return (list_s, list_a, list_r, list_y), ep_reward, slowdown, ep_len
+
+
+for i_episode in range(num_episodes):
+    s = np.reshape(env.reset(), newshape=(state_dim,))
+    ep_reward = 0.0
+    ep_ave_max_q = 0.0
+    #print("episode %d" % i_episode)
+    job_buffers = []
+    baselines = []
+    rewards = []
+    futures = []
+    slowdowns = []
+    ep_lens = []
+    with ThreadPoolExecutor(max_workers=12) as exec:
+        for ex in range(pa.num_ex):
+            futures.append(exec.submit(get_ith_handle, model, ex))
+
+    concurrent.futures.wait(futures)
+    advs = []
+    for i in range(pa.num_ex):
+        job_buffer, baseline, rew, sd, eplen = futures[i].result()
+        job_buffers.append(job_buffer)
+        baselines.append(baseline)
+        rewards.append(rew)
+        slowdowns.append(sd)
+        ep_lens.append(eplen)
+
+    # compute baseline
+    ss = []
+    aa = []
+    vv = []
+    for t in range(pa.episode_max_length):
+        for ep in range(pa.num_seq_per_batch):
+            for ex in range(pa.num_ex):
+                if len(job_buffers[ex][ep][0]) <= t:
+                    continue
+                s = job_buffers[ex][ep][0][t]
+                a = job_buffers[ex][ep][1][t]
+                adv = job_buffers[ex][ep][4][t]
+
+            ss.append(s)
+            aa.append(a)
+            vv.append(adv)
+    model.train(np.array(ss), np.array(aa), np.array(vv))
+
+    print(
+        "[episode %d] avg episode length %0.2f avg slowdown %0.2f, avg reward %0.2f" %
+        (i_episode, np.mean(ep_lens), np.mean(slowdowns), np.mean(rewards)))
+    if(i_episode+1) % 10 == 0:
+        entropies = []
+        slowdowns = []
+        for ex in range(pa.num_ex):
+            s = te_env.reset()
+            s = flatten(s)
+            te_env.seq_no = ex
+            for ep_len in range(pa.episode_max_length):
+                a = model.get_action_dist(s)
+                entropies.append(calc_entropy(a))
+                action = np.random.choice(action_space, p=a)
+                s2, r, done, info = te_env.step(action)
+                s2 = flatten(s2)
                 if done:
-                     r = -10
-
-                buffer_s.append(s)
-                buffer_a.append(a)
-                buffer_r.append((r-1) / 5)                           # 0 for not down, -11 for down. Reward engineering
-                s = s_
-                ep_r += r
-
-                GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
-                if t == EP_LEN - 1 or GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE or done:
-                    if done:
-                        v_s_ = 0                                # end of episode
-                    else:
-                        v_s_ = 0
-
-                    discounted_r = []                           # compute discounted reward
-                    for r in buffer_r[::-1]:
-                        v_s_ = r + GAMMA * v_s_
-                        discounted_r.append(v_s_)
-                    discounted_r.reverse()
-
-                    bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
-                    buffer_s, buffer_a, buffer_r = [], [], []
-
-                    ret = np.hstack((bs, ba, br))
-                    QUEUE.put(ret)          # put data in the queue
-                    if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
-                        ROLLING_EVENT.clear()       # stop collecting data
-                        UPDATE_EVENT.set()          # globalPPO update
-
-                    if GLOBAL_EP >= EP_MAX:         # stop training
-                        COORD.request_stop()
-                        break
-
-                    if done: break
-
-            # record reward changes, plot later
-            if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(ep_r)
-            else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1]*0.9+ep_r*0.1)
-            GLOBAL_EP += 1
-            print('{0:.1f}%'.format(GLOBAL_EP/EP_MAX*100), '|W%i' % self.wid,  '|Ep_r: %.2f' % ep_r,)
-
-
-if __name__ == '__main__':
-    GLOBAL_PPO = PPONet()
-    UPDATE_EVENT, ROLLING_EVENT = threading.Event(), threading.Event()
-    UPDATE_EVENT.clear()            # not update now
-    ROLLING_EVENT.set()             # start to roll out
-    workers = [Worker(wid=i) for i in range(N_WORKER)]
-
-    GLOBAL_UPDATE_COUNTER, GLOBAL_EP = 0, 0
-    GLOBAL_RUNNING_R = []
-    COORD = tf.train.Coordinator()
-    QUEUE = queue.Queue()           # workers putting data in this queue
-    threads = []
-    for worker in workers:          # worker threads
-        t = threading.Thread(target=worker.work, args=())
-        t.start()                   # training
-        threads.append(t)
-    # add a PPO updating thread
-    threads.append(threading.Thread(target=GLOBAL_PPO.update,))
-    threads[-1].start()
-    COORD.join(threads)
-
-    # plot reward change and test
-    plt.plot(np.arange(len(GLOBAL_RUNNING_R)), GLOBAL_RUNNING_R)
-    plt.xlabel('Episode'); plt.ylabel('Moving reward'); plt.ion(); plt.show()
-    env = gym.make('CartPole-v0')
-    while True:
-        s = env.reset()
-        for t in range(1000):
-            env.render()
-            s, r, done, info = env.step(GLOBAL_PPO.choose_action(s))
-            if done:
-                break
+                    break
+                s = s2
+            slowdown = get_avg_slowdown(info)
+            slowdowns.append(slowdown)
+        print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" % (i_episode, np.mean(slowdowns), np.mean(entropies)))

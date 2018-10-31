@@ -3,8 +3,8 @@ import tflearn
 import numpy as np
 
 class model(object):
-    def __init__(self, sess, state_dim, action_dim, learning_rate, network_widths=[300, 200, 30],
-                 update_step=30, epsilon=0.2):
+    def __init__(self, sess, state_dim, action_dim, learning_rate,
+            network_widths=[300, 200, 30], update_step=30, epsilon=0.2):
 
         if sess is not None:
             self.sess = sess

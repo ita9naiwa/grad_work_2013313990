@@ -207,64 +207,7 @@ class PGLearner:
 
 def build_pg_network(input_height, input_width, output_length):
 
-    # l_in = lasagne.layers.InputLayer(
-    #     shape=(None, 1, input_height, input_width),
-    # )
-    #
-    # l_hid1 = lasagne.layers.DenseLayer(
-    #     l_in,
-    #     num_units=20,
-    #     # nonlinearity=lasagne.nonlinearities.tanh,
-    #     nonlinearity=lasagne.nonlinearities.rectify,
-    #     # W=lasagne.init.Normal(.0201),
-    #     #W=lasagne.init.Normal(.01),
-    #     W=lasagne.init.HeNormal('relu'),
-    #     b=lasagne.init.Constant(0.05)
-    # )
-    #
-    # #l_hid1_drop = lasagne.layers.DropoutLayer(l_hid1, p=0.5)
-    #
-    # l_hid2 = lasagne.layers.DenseLayer(
-    #     l_hid1,
-    #     num_units=20,
-    #     # nonlinearity=lasagne.nonlinearities.tanh,
-    #     nonlinearity=lasagne.nonlinearities.rectify,
-    #     # W=lasagne.init.Normal(.0201),
-    #     #W=lasagne.init.Normal(.01),
-    #     W=lasagne.init.HeNormal('relu'),
-    #     b=lasagne.init.Constant(0.05)
-    # )
-    #
-    # l_hid3 = lasagne.layers.DenseLayer(
-    #     l_hid2,
-    #     num_units=20,
-    #     # nonlinearity=lasagne.nonlinearities.tanh,
-    #     nonlinearity=lasagne.nonlinearities.rectify,
-    #     # W=lasagne.init.Normal(.0201),
-    #     #W=lasagne.init.Normal(.01),
-    #     W=lasagne.init.HeNormal('relu'),
-    #     b=lasagne.init.Constant(0.05)
-    # )
-    #
-    #
-    # #50% dropout again:
-    # #l_hid2_drop = lasagne.layers.DropoutLayer(l_hid2, p=0.5)
-    #
-    # l_out = lasagne.layers.DenseLayer(
-    #     l_hid3,
-    #     num_units=output_length,
-    #     nonlinearity=lasagne.nonlinearities.softmax,
-    #     # W=lasagne.init.Normal(.0001),
-    #     #W=lasagne.init.Normal(.01),
-    #     W=lasagne.init.HeNormal('relu'),
-    #     b=lasagne.init.Constant(0.05)
-    # )
-    #
-    # return l_out
-
-    l_in = lasagne.layers.InputLayer(
-        shape=(None, 1, input_height, input_width),
-    )
+    l_in = lasagne.layers.InputLayer(shape=(None, input_height * input_width))
 
     l_hid = lasagne.layers.DenseLayer(
         l_in,

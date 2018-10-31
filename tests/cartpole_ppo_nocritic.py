@@ -1,8 +1,8 @@
 import test_base
 
-import src.models.REINFORCE as rl
 from src.models.buffer import ReplayBuffer
 from src.noise import OrnsteinUhlenbeckActionNoise
+import src.models.REINFORCE_PPO as reinforce_pro
 
 import numpy as np
 import tensorflow as tf
@@ -21,14 +21,13 @@ batch_size = 20
 num_job_sets = 1000
 render = True
 buffer_size = 100000
-lr = 0.001
+lr = 0.0001
 seed = 1234
 p_actions = np.arange(action_dim, dtype=int)
-
 def __main__():
-    model = rl.model(sess, state_dim, action_dim, lr, network_widths=[50, 40])
+    model = reinforce_pro.model(sess, state_dim, action_dim, lr,
+                network_widths=[50, 40], update_step=20)
     sess.run(tf.initializers.global_variables())
-    sigma = np.diag(0.3 * np.ones(action_dim, dtype=np.float32))
 
     for current_job_cnt in range(num_job_sets):
         job_buffer = []
@@ -86,6 +85,7 @@ def __main__():
                 ss.append(s)
                 aa.append(a)
                 vv.append(var)
+
         model.train(np.array(ss), np.array(aa), np.array(vv))
 
         print("[jobset %d] avg episode length : %0.2f" % (current_job_cnt, np.mean(ep_lengths)), "avg episode reward : %0.2f" % np.mean(rewards))
