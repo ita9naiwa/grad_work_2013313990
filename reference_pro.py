@@ -2,38 +2,27 @@ from tqdm import tqdm
 import numpy as np
 import time
 import tensorflow as tf
-import matplotlib.pyplot as plt
-import src.deeprm.parameters as parameters
-import src.models.REINFORCE_PPO as reinforce_pro
-import src.deeprm.environment as environment
+import src.models.REINFORCE_PPO as reinforce
 from src.models.buffer import ReplayBuffer
-import gym, threading, queue
+from src.summary import summary
+from src.utils import *
+from src.deeprm import parameters
+from src.deeprm import environment
 
-import src.models.ddpg as ddpg
-
+sess = tf.Session()
 pa = parameters.Parameters()
 ###############
-pa.num_ex = 100
+pa.num_ex = 50
 pa.num_seq_per_batch = 20
 ###############
 pa.compute_dependent_parameters()
-buffer_size = 100000
-replay_buffer = ReplayBuffer(buffer_size)
 state_dim = (pa.network_input_width * pa.network_input_height)
 action_dim = pa.num_nw + 1
-print("State dim: ", state_dim, "action_dim", action_dim)
-discount_factor = 0.99
-num_episodes = 10000
-render = True
+act_list = np.arange(action_dim)
 
-lr = 0.001
-seed = 1234
-QUEUE = queue.Queue()
+pg_learner = reinforce.model(sess, state_dim, action_dim,
+                             learning_rate=0.0001, network_widths=[20])
 
-sess = tf.Session()
-#model = ddpg.DDPG(sess, action_dim, state_dim, actor_lr, critic_lr, tau=tau, use_softmax=True)
-model = reinforce_pro.model(sess, state_dim, action_dim, lr, network_widths=[50, 40])
-sess.run(tf.initializers.global_variables())
 def discount(x, gamma):
     """
     Given vector x, computes a vector y such that
@@ -55,7 +44,6 @@ def get_entropy(vec):
         entropy = 0
     return entropy
 
-
 def get_traj(model, env, episode_max_length, render=False):
     """
     Run model-environment loop for one whole episode (trajectory)
@@ -72,13 +60,9 @@ def get_traj(model, env, episode_max_length, render=False):
 
     for _ in range(episode_max_length):
         ob = np.reshape(ob, (state_dim,))
-        act_prob = model.get_action_dist(ob)
-        csprob_n = np.cumsum(act_prob)
-        a = (csprob_n > np.random.rand()).argmax()
+        act_prob = model.get_one_act_prob(ob)
+        a = np.random.choice(act_list, p=act_prob)
         obs.append(ob)  # store the ob at current decision making step
-        #q = np.zeros_like(act_prob)
-        #q[a] = 1
-        #acts.append(q)
         acts.append(a)
         ob, rew, done, info = env.step(a, repeat=True)
 
@@ -152,6 +136,9 @@ def process_all_info(trajs):
 
     return enter_time, finish_time, job_len
 
+
+
+
 def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
 
     env = environment.Env(pa, render=render, repre=repre, end=end, reward_type='delay')
@@ -172,16 +159,15 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
         for ex in tqdm(range(pa.num_ex)):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajs = []
-
             for i in range(pa.num_seq_per_batch):
-                traj = get_traj(model, env, pa.episode_max_length)
+                traj = get_traj(pg_learner, env, pa.episode_max_length)
                 ep_len = len(traj['reward'])
 
                 rews = traj['reward']
                 obs = traj['ob']
                 acts = traj['action']
-                for i in range(ep_len):
-                    replay_buffer.add(obs[i], acts[i], rews[i], i == (ep_len - 1), obs[i + 1])
+                #for i in range(ep_len):
+                #    replay_buffer.add(obs[i], acts[i], rews[i], i == (ep_len - 1), obs[i + 1])
                 trajs.append(traj)
 
             # roll to next example
@@ -213,10 +199,9 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
         all_action = np.concatenate(all_action)
         all_adv = np.concatenate(all_adv)
 
-        batch = replay_buffer.sample_batch(replay_buffer.count)
-        replay_buffer.clear()
-
-        model.train(all_ob, all_action, all_adv)
+        #batch = replay_buffer.sample_batch(replay_buffer.count)
+        #replay_buffer.clear()
+        loss = pg_learner.train(all_ob, all_action, all_adv)
 
         eprews = np.concatenate(all_eprews)  # episode total rewards
         eplens = np.concatenate(all_eplens)  # episode lengths

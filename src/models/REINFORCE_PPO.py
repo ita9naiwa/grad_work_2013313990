@@ -58,6 +58,8 @@ class model(object):
         parameters = tf.trainable_variables(name)
         return out, parameters
         # Supervised Learning
+    def get_one_act_prob(self, state):
+        return self.get_action_dist(state)
 
     def get_action_dist(self, state):
         return self.get_action([state])[0]

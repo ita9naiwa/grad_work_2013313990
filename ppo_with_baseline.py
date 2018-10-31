@@ -26,7 +26,7 @@ action_dim = pa.num_nw + 1
 discount_factor = 1.00
 num_episodes = 1000
 
-lr = 0.0003
+lr = 0.0003##
 update_step = 50
 print(ob.shape)
 
@@ -181,9 +181,7 @@ for i_episode in range(num_episodes):
             vv.append(adv)
     model.train(np.array(ss), np.array(aa), np.array(vv))
 
-    print(
-        "[episode %d] avg episode length %0.2f avg slowdown %0.2f, avg reward %0.2f" %
-        (i_episode, np.mean(ep_lens), np.mean(slowdowns), np.mean(rewards)))
+    print( "[episode %d] avg episode length %0.2f avg slowdown %0.2f, avg reward %0.2f" % (i_episode, np.mean(ep_lens), np.mean(slowdowns), np.mean(rewards)))
     if(i_episode+1) % 10 == 0:
         entropies = []
         slowdowns = []
