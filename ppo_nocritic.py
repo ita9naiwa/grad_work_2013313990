@@ -61,7 +61,6 @@ class PPONet(object):
         while not COORD.should_stop():
             if GLOBAL_EP < EP_MAX:
                 UPDATE_EVENT.wait()                     # wait until get batch of data
-                print("I'm updating")
                 self.sess.run(self.update_oldpi_op)     # copy pi to old pi
                 data = [QUEUE.get() for _ in range(QUEUE.qsize())]      # collect data from all workers
                 data = np.vstack(data)
