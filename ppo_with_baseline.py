@@ -18,10 +18,10 @@ import gym, threading, queue
 EP_MAX = 1000
 EP_LEN = 500
 N_WORKER = 8                # parallel workers
-GAMMA = 0.99                 # reward discount factor
+GAMMA = 0.9                 # reward discount factor
 A_LR = 0.0001               # learning rate for actor
-MIN_BATCH_SIZE = 128         # minimum batch size for updating PPO
-UPDATE_STEP = 20            # loop update operation n-steps
+MIN_BATCH_SIZE = 64         # minimum batch size for updating PPO
+UPDATE_STEP = 15            # loop update operation n-steps
 EPSILON = 0.2               # for clipping surrogate objective
 GAME = 'CartPole-v0'
 
@@ -112,7 +112,7 @@ class Worker(object):
 
                 buffer_s.append(s)
                 buffer_a.append(a)
-                buffer_r.append( (r-1) / 5)                           # 0 for not down, -11 for down. Reward engineering
+                buffer_r.append((r-1) / 5)                           # 0 for not down, -11 for down. Reward engineering
                 s = s_
                 ep_r += r
 

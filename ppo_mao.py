@@ -18,15 +18,16 @@ from src.deeprm.parameters import Parameters
 from src.deeprm.environment import Env
 from src.utils import *
 
-EP_MAX = 100
-EP_LEN = 100
-N_WORKER = 4                # parallel workers
-GAMMA = 0.99                # reward discount factor
-A_LR = 0.001               # learning rate for actor
-C_LR = 0.001               # learning rate for critic
-MIN_BATCH_SIZE = 4         # minimum batch size for updating PPO
+EP_MAX = 300
+EP_LEN = 500
+N_WORKER = 8                # parallel workers
+GAMMA = 0.9                 # reward discount factor
+A_LR = 0.0001               # learning rate for actor
+C_LR = 0.0001               # learning rate for critic
+MIN_BATCH_SIZE = 64         # minimum batch size for updating PPO
 UPDATE_STEP = 15            # loop update operation n-steps
 EPSILON = 0.2               # for clipping surrogate objective
+GAME = 'CartPole-v0'
 
 def generate_sequence_work(pa, seed=42):
     np.random.seed(seed)
