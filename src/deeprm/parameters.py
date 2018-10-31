@@ -96,7 +96,7 @@ class Parameters:
         self.num_ex = 50                # number of sequences
         self.output_freq = 50          # interval for output and store parameters
         self.num_seq_per_batch = 20    # number of sequences to compute baseline
-        self.episode_max_length = 400  # enforcing an artificial terminal
+        self.episode_max_length = 2000  # enforcing an artificial terminal
         self.num_res = 2               # number of resources in the system
         self.num_nw = 10                # maximum allowed number of work in the queue
         self.time_horizon = 20         # number of time steps in the graph
@@ -106,7 +106,7 @@ class Parameters:
         self.backlog_size = 60         # backlog queue size
         self.max_track_since_new = 10  # track how many time steps since last new jobs
         self.job_num_cap = 40          # maximum number of distinct colors in current work graph
-        self.new_job_rate = 0.65        # lambda in new job arrival Poisson Process
+        self.new_job_rate = 0.5        # lambda in new job arrival Poisson Process
 
         self.discount = 1           # discount factor
 

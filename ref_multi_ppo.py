@@ -11,11 +11,12 @@ from src.summary import summary
 from src.utils import *
 from src.deeprm import parameters
 from src.deeprm import environment
-
+import src.models.REINFORCE_PPO as reinforce
+import queue
 from multiprocessing import Manager
 from multiprocessing import Process
 
-
+sess = tf.Session()
 pa = parameters.Parameters()
 ###############
 pa.num_ex = 50
@@ -24,6 +25,11 @@ pa.num_seq_per_batch = 20
 pa.compute_dependent_parameters()
 state_dim = (pa.network_input_width * pa.network_input_height)
 action_dim = pa.num_nw + 1
+pg_learner = reinforce.model(sess, state_dim, action_dim,
+                             learning_rate=0.0001, network_widths=[20])
+
+
+QUEUE = queue.Queue()           # workers putting data in this queue
 
 def init_accums(pg_learner):  # in rmsprop
     accums = []
@@ -192,6 +198,15 @@ def get_traj_worker(pg_learner, env, pa, result):
 
     all_entropy = np.concatenate([traj["entropy"] for traj in trajs])
 
+    QUEUE.put(
+        {"all_ob": all_ob,
+                   "all_action": all_action,
+                   "all_adv": all_adv,
+                   "all_eprews": all_eprews,
+                   "all_eplens": all_eplens,
+                   "all_slowdown": all_slowdown,
+                   "all_entropy": all_entropy}
+    )
     result.append({"all_ob": all_ob,
                    "all_action": all_action,
                    "all_adv": all_adv,
@@ -207,7 +222,6 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
     print("Preparing for workers...")
     # ----------------------------
 
-    pg_learners = []
     envs = []
     def generate_sequence_work(pa, seed=42):
         np.random.seed(seed)
@@ -230,19 +244,6 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
         env.seq_no = ex
         envs.append(env)
 
-    for ex in range(pa.batch_size + 1):  # last worker for updating the parameters
-
-
-        pg_learner = pg_network.PGLearner(pa)
-
-        if pg_resume is not None:
-            net_handle = open(pg_resume, 'rb')
-            net_params = cPickle.load(net_handle)
-            pg_learner.set_net_params(net_params)
-
-        pg_learners.append(pg_learner)
-
-    accums = init_accums(pg_learners[pa.batch_size])
 
     # --------------------------------------
     print("Preparing for reference data...")
@@ -280,7 +281,7 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
         for ex in range(pa.num_ex):
             ex_idx = ex_indices[ex]
             p = Process(target=get_traj_worker,
-                        args=(pg_learners[ex_counter], envs[ex_idx], pa, manager_result, ))
+                        args=(pg_learner, envs[ex_idx], pa, manager_result, ))
             ps.append(p)
 
             ex_counter += 1
@@ -296,12 +297,9 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
                 for p in ps:
                     p.join()
 
-                result = []  # convert list from shared memory
-                for r in manager_result:
-                    result.append(r)
+                result = [QUEUE.get() for _ in range(QUEUE.qsize())]
 
                 ps = []
-                manager_result = manager.list([])
 
                 all_ob = concatenate_all_ob_across_examples([r["all_ob"] for r in result], pa)
                 all_action = np.concatenate([r["all_action"] for r in result])
@@ -309,9 +307,6 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
 
                 # Do policy gradient update step, using the first agent
                 # put the new parameter in the last 'worker', then propagate the update at the end
-                grads = pg_learners[pa.batch_size].get_grad(all_ob, all_action, all_adv)
-
-                grads_all.append(grads)
 
                 all_eprews.extend([r["all_eprews"] for r in result])
 
@@ -320,21 +315,7 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
 
                 all_slowdown.extend(np.concatenate([r["all_slowdown"] for r in result]))
                 all_entropy.extend(np.concatenate([r["all_entropy"] for r in result]))
-
-        # assemble gradients
-        grads = grads_all[0]
-        for i in range(1, len(grads_all)):
-            for j in range(len(grads)):
-                grads[j] += grads_all[i][j]
-
-        # propagate network parameters to others
-        params = pg_learners[pa.batch_size].get_params()
-
-        rmsprop_updates_outside(grads, params, accums, pa.lr_rate, pa.rms_rho, pa.rms_eps)
-
-        for i in range(pa.batch_size + 1):
-            pg_learners[i].set_net_params(params)
-
+        pg_learner.train(all_ob, all_action, all_adv)
         timer_end = time.time()
 
         print ("-----------------")

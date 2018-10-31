@@ -166,10 +166,14 @@ class Env:
     def get_reward(self, ):
 
         reward = 0
-        if self.reward_type  == "delay":
+        if self.reward_type == 'doing':
             for j in self.machine.running_job:
-                reward += self.pa.delay_penalty / float(j.len)
-
+                reward += 1 / float(j.len)
+        elif self.reward_type  == "delay":
+            """
+            for j in self.machine.running_job:
+                reward += 1 / float(j.len)
+            """
             for j in self.job_slot.slot:
                 if j is not None:
                     reward += self.pa.hold_penalty / float(j.len)
@@ -177,21 +181,22 @@ class Env:
             for j in self.job_backlog.backlog:
                 if j is not None:
                     reward += self.pa.dismiss_penalty / float(j.len)
+
         elif self.reward_type == "mine":
             a = self.chosen_job_id
             #if a ==
 
             if a == -11:
-                reward = -1
+                reward = -0.05
             elif a == -12:
-                reward = -1
+                reward = -0.05
             elif a >= 0:
                 job = self.job_slot.slot[a]
                 duration = job.len
                 enter_time = job.enter_time
                 finish_time = self.curr_time + duration
                 delay = (finish_time - enter_time)
-                reward = duration
+                reward = duration / delay
 
 
 

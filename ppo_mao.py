@@ -19,21 +19,21 @@ from src.deeprm import parameters
 from src.deeprm import environment
 from src.utils import *
 import pickle
-EP_MAX = 1000
-EP_LEN = 500
-N_WORKER = 16                # parallel workers
+EP_MAX = 100
+EP_LEN = 2001
+N_WORKER = 8                # parallel workers
 GAMMA = 0.9                 # reward discount factor
-A_LR = 0.0001               # learning rate for actor
+A_LR = 0.00001               # learning rate for actor
 C_LR = 0.0001               # learning rate for critic
 MIN_BATCH_SIZE = 32         # minimum batch size for updating PPO
-UPDATE_STEP = 15            # loop update operation n-steps
-EPSILON = 0.1               # for clipping surrogate objective
+UPDATE_STEP = 20            # loop update operation n-steps
+EPSILON = 0.2               # for clipping surrogate objective
 GAME = 'CartPole-v0'
 
 
 pa = parameters.Parameters()
+pa.num_ex = 2000
 pa.compute_dependent_parameters()
-pa.num_ex = 50
 env = environment.Env(pa)
 ob = env.reset()
 ob = flatten(ob)
@@ -62,14 +62,14 @@ nw_len_seqs, nw_size_seqs = generate_sequence_work(pa, seed=42)
 
 
 def get_env():
-    return environment.Env(pa, nw_len_seqs=nw_len_seqs, nw_size_seqs=nw_size_seqs, end='all_done')
+    return environment.Env(pa, nw_len_seqs=nw_len_seqs, nw_size_seqs=nw_size_seqs, end='all_done', reward_type='delay')
 
 with open('test_env.pickle', 'rb') as f:
     te_env = pickle.load(f)
 
 env = get_env()
 state_dim = S_DIM = pa.network_input_width * pa.network_input_height
-action_dim = A_DIM = pa.num_nw
+action_dim = A_DIM = pa.num_nw + 1
 
 class PPONet(object):
     def __init__(self):
@@ -130,8 +130,11 @@ class PPONet(object):
         params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=name)
         return a_prob, params
 
+    def get_prob_weight(self, s):
+        return self.sess.run(self.pi, feed_dict={self.tfs: s[None, :]})
+
     def choose_action(self, s):  # run by a local
-        prob_weights = self.sess.run(self.pi, feed_dict={self.tfs: s[None, :]})
+        prob_weights = self.get_prob_weight(s)
         action = np.random.choice(range(prob_weights.shape[1]),
                                       p=prob_weights.ravel())  # select action w.r.t the actions prob
         return action
@@ -164,7 +167,7 @@ class Worker(object):
                 s_ = flatten(s_)
                 buffer_s.append(s)
                 buffer_a.append(a)
-                buffer_r.append(r /10)
+                buffer_r.append(r)
                 s = s_
                 ep_r += r
 
@@ -180,8 +183,9 @@ class Worker(object):
                         v_s_ = r + GAMMA * v_s_
                         discounted_r.append(v_s_)
                     discounted_r.reverse()
-
-                    bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
+                    discounted_r *= 0.1 * np.array(discounted_r)
+                    #bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
+                    bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.vstack(discounted_r)
                     buffer_s, buffer_a, buffer_r = [], [], []
                     ret = np.hstack((bs, ba, br))
                     QUEUE.put(ret)          # put data in the queue
@@ -192,34 +196,64 @@ class Worker(object):
                     if GLOBAL_EP >= EP_MAX:         # stop training
                         COORD.request_stop()
                         break
-
                     if done: break
+
             slowdown = get_avg_slowdown(info)
             # record reward changes, plot later
             if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(ep_r)
-            else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1]*0.9+ep_r*0.1)
+            else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1] * 0.95 + ep_r * 0.05)
             GLOBAL_EP += 1
             print('{0:.1f}%'.format(GLOBAL_EP/EP_MAX*100), '|W%i' % self.wid,
+                '|RunningR: %0.2f' % GLOBAL_RUNNING_R[-1],
                 '|Ep_r: %.2f' % ep_r, "|ep_len: %d" % t, "|slowdown: %0.1f" % slowdown)
+
+f = open('ppo_mao_res.txt','w')
+f.close()
+def test(i):
+    slowdowns = []
+    entropies = []
+    for ex in range(50):
+        s = te_env.reset()
+        s = flatten(s)
+        te_env.seq_no = ex
+        for ep_len in range(pa.episode_max_length):
+            a = GLOBAL_PPO.get_prob_weight(s)
+            entropies.append(calc_entropy(a))
+            action = np.random.choice(range(a.shape[1]), p=a.ravel())
+            #action = np.argmax(a)
+            s2, r, done, info = te_env.step(action)
+            s2 = flatten(s2)
+            if done:
+                break
+            s = s2
+        slowdown = get_avg_slowdown(info)
+        slowdowns.append(slowdown)
+        with open('ppo_mao_res.txt', 'a') as f:
+            print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" %
+                (i, np.mean(slowdowns), np.mean(entropies)), file=f)
+    print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" % (i, np.mean(slowdowns), np.mean(entropies)))
 
 
 if __name__ == '__main__':
     GLOBAL_PPO = PPONet()
+    test(0)
     UPDATE_EVENT, ROLLING_EVENT = threading.Event(), threading.Event()
-    UPDATE_EVENT.clear()            # not update now
-    ROLLING_EVENT.set()             # start to roll out
-    workers = [Worker(wid=i) for i in range(N_WORKER)]
+    for i in range(100):
+        UPDATE_EVENT.clear()            # not update now
+        ROLLING_EVENT.set()             # start to roll out
+        workers = [Worker(wid=i) for i in range(N_WORKER)]
 
-    GLOBAL_UPDATE_COUNTER, GLOBAL_EP = 0, 0
-    GLOBAL_RUNNING_R = []
-    COORD = tf.train.Coordinator()
-    QUEUE = queue.Queue()           # workers putting data in this queue
-    threads = []
-    for worker in workers:          # worker threads
-        t = threading.Thread(target=worker.work, args=())
-        t.start()                   # training
-        threads.append(t)
-    # add a PPO updating thread
-    threads.append(threading.Thread(target=GLOBAL_PPO.update,))
-    threads[-1].start()
-    COORD.join(threads)
+        GLOBAL_UPDATE_COUNTER, GLOBAL_EP = 0, 0
+        GLOBAL_RUNNING_R = []
+        COORD = tf.train.Coordinator()
+        QUEUE = queue.Queue()           # workers putting data in this queue
+        threads = []
+        for worker in workers:          # worker threads
+            t = threading.Thread(target=worker.work, args=())
+            t.start()                   # training
+            threads.append(t)
+        # add a PPO updating thread
+        threads.append(threading.Thread(target=GLOBAL_PPO.update,))
+        threads[-1].start()
+        COORD.join(threads)
+        test(i+1)

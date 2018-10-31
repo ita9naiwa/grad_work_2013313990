@@ -120,25 +120,7 @@ def __main__():
 
         entropies = []
         if((1+current_ep) % 100 == 0):
-            slowdowns = []
-            for ex in range(pa.num_ex):
-                s = te_env.reset()
-                s = flatten(s)
-                te_env.seq_no = ex
-                for ep_len in range(pa.episode_max_length):
-                    a = model.get_action_dist(s)
-                    entropies.append(calc_entropy(a))
-                    action = np.random.choice(action_space, p=a)
-                    #action = np.argmax(a)
-                    s2, r, done, info = te_env.step(action)
-                    s2 = flatten(s2)
-                    if done:
-                        break
-                    s = s2
-                slowdown = get_avg_slowdown(info)
-                slowdowns.append(slowdown)
 
-            print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" % (current_ep, np.mean(slowdowns), np.mean(entropies)))
 
 if __name__ == "__main__":
     __main__()

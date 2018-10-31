@@ -41,8 +41,8 @@ te_nw_len_seqs, te_nw_size_seqs = generate_sequence_work(pa, seed=11)
 print('write new test data??')
 te_env = Env(pa, nw_len_seqs=te_nw_len_seqs, nw_size_seqs=te_nw_size_seqs, end='all_done', reward_type='done')
 
-with open('test_env.pickle', 'wb') as p:
-    pickle.dump(te_env, p)
+with open('test_env.pickle','wb') as f:
+    pickle.dump(te_env, f)
 with open('test_env.pickle', 'rb') as f:
     te_env = pickle.load(f)
 
@@ -51,7 +51,7 @@ slowdowns = []
 rewards = []
 sd = []
 
-for i_episode in range(100):
+for i_episode in range(50):
     te_env.num_ex = i_episode
     ep_reward = 0.0
     ep_ave_max_q = 0.0

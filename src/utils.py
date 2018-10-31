@@ -1,5 +1,15 @@
 import numpy as np
 import scipy
+
+def calc_entropy(p):
+    p = p + 0.00001
+    ret = -np.sum(np.log(p) * p)
+    if np.isinf(ret):
+        return 0
+    else:
+        return ret
+
+
 def flatten(m):
     state_dim = np.prod(m.shape)
     return np.reshape(m, newshape=(state_dim,))
