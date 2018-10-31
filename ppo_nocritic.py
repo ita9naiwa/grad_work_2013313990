@@ -17,7 +17,7 @@ import gym, threading, queue
 
 EP_MAX = 1000
 EP_LEN = 500
-N_WORKER = 4              # parallel workers
+N_WORKER = 10              # parallel workers
 GAMMA = 0.9                 # reward discount factor
 A_LR = 0.001               # learning rate for actor
 MIN_BATCH_SIZE = 1         # minimum batch size for updating PPO
