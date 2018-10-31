@@ -29,7 +29,7 @@ pa.compute_dependent_parameters()
 state_dim = (pa.network_input_width * pa.network_input_height)
 action_dim = pa.num_nw + 1
 pg_learner = reinforce.model(sess, state_dim, action_dim,
-                             learning_rate=0.01, network_widths=[20], update_step=30)
+                             learning_rate=0.001, network_widths=[20], update_step=50)
 def generate_sequence_work(pa, seed=42):
     np.random.seed(seed)
     simu_len = pa.simu_len * pa.num_ex
