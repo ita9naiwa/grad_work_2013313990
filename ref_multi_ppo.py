@@ -14,13 +14,13 @@ from src.deeprm import environment
 import src.models.REINFORCE_PPO as reinforce
 import queue
 from multiprocessing import Manager
-from multiprocessing import Process
-
+import threading
+from tqdm import tqdm
 sess = tf.Session()
 pa = parameters.Parameters()
 ###############
 pa.num_ex = 50
-pa.num_seq_per_batch = 20
+pa.num_seq_per_batch = 3
 ###############
 pa.compute_dependent_parameters()
 state_dim = (pa.network_input_width * pa.network_input_height)
@@ -280,41 +280,41 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
         ex_counter = 0
         for ex in range(pa.num_ex):
             ex_idx = ex_indices[ex]
-            p = Process(target=get_traj_worker,
+            p = threading.Thread(target=get_traj_worker,
                         args=(pg_learner, envs[ex_idx], pa, manager_result, ))
             ps.append(p)
 
             ex_counter += 1
 
-            if ex_counter >= pa.batch_size or ex == pa.num_ex - 1:
-
-
-                ex_counter = 0
-
-                for p in ps:
-                    p.start()
-
-                for p in ps:
+        ex_counter = 0
+        temp = []
+        for i in tqdm(range(len(ps))):
+            ps[i].start()
+            temp.append(ps[i])
+            if (i + 1) % 16 == 0:
+                for p in temp:
                     p.join()
+        for p in temp:
+            p.join()
 
-                result = [QUEUE.get() for _ in range(QUEUE.qsize())]
+        result = [QUEUE.get() for _ in range(QUEUE.qsize())]
 
-                ps = []
+        ps = []
 
-                all_ob = concatenate_all_ob_across_examples([r["all_ob"] for r in result], pa)
-                all_action = np.concatenate([r["all_action"] for r in result])
-                all_adv = np.concatenate([r["all_adv"] for r in result])
+        all_ob = concatenate_all_ob_across_examples([r["all_ob"] for r in result], pa)
+        all_action = np.concatenate([r["all_action"] for r in result])
+        all_adv = np.concatenate([r["all_adv"] for r in result])
 
-                # Do policy gradient update step, using the first agent
-                # put the new parameter in the last 'worker', then propagate the update at the end
+        # Do policy gradient update step, using the first agent
+        # put the new parameter in the last 'worker', then propagate the update at the end
 
-                all_eprews.extend([r["all_eprews"] for r in result])
+        all_eprews.extend([r["all_eprews"] for r in result])
 
-                eprews.extend(np.concatenate([r["all_eprews"] for r in result]))  # episode total rewards
-                eplens.extend(np.concatenate([r["all_eplens"] for r in result]))  # episode lengths
+        eprews.extend(np.concatenate([r["all_eprews"] for r in result]))  # episode total rewards
+        eplens.extend(np.concatenate([r["all_eplens"] for r in result]))  # episode lengths
 
-                all_slowdown.extend(np.concatenate([r["all_slowdown"] for r in result]))
-                all_entropy.extend(np.concatenate([r["all_entropy"] for r in result]))
+        all_slowdown.extend(np.concatenate([r["all_slowdown"] for r in result]))
+        all_entropy.extend(np.concatenate([r["all_entropy"] for r in result]))
         pg_learner.train(all_ob, all_action, all_adv)
         timer_end = time.time()
 
