@@ -20,7 +20,7 @@ sess = tf.Session()
 pa = parameters.Parameters()
 ###############
 pa.num_ex = 50
-pa.num_seq_per_batch = 3
+pa.num_seq_per_batch = 20
 ###############
 pa.compute_dependent_parameters()
 state_dim = (pa.network_input_width * pa.network_input_height)
