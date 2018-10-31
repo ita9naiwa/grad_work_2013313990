@@ -256,24 +256,58 @@ class traj_worker(object):
             print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid, '|avg slowdown: %.2f' % np.mean(all_slowdown))
 
 
+import pickle
+with open('test_env.pickle', 'rb') as f:
+    te_env = pickle.load(f)
+
+f = open('multi_ref_mao.txt', 'w')
+f.close()
+def test(i):
+    slowdowns = []
+    entropies = []
+    for ex in range(50):
+        s = te_env.reset()
+        s = flatten(s)
+        te_env.seq_no = ex
+        for ep_len in range(pa.episode_max_length):
+            a = pg_learner.get_one_act_prob(s)
+            entropies.append(calc_entropy(a))
+            action = np.random.choice(np.arange(action_dim), p=a.ravel())
+            #action = np.argmax(a)
+            s2, r, done, info = te_env.step(action)
+            s2 = flatten(s2)
+            if done:
+                break
+            s = s2
+
+        slowdown = get_avg_slowdown(info)
+        slowdowns.append(slowdown)
+        with open('ppo_mao_res.txt', 'a') as f:
+            print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" %
+                (i, np.mean(slowdowns), np.mean(entropies)), file=f)
+    print("[test res at %d ]\tAvg slowdown of test dataset: %0.2f, Avg entropy %0.2f" % (i, np.mean(slowdowns), np.mean(entropies)))
+
 
 
 if __name__ == '__main__':
     UPDATE_EVENT, ROLLING_EVENT = threading.Event(), threading.Event()
-    UPDATE_EVENT.clear()            # not update now
-    ROLLING_EVENT.set()             # start to roll out
-    workers = [traj_worker(wid=i) for i in range(N_WORKER)]
+    test(0)
+    for i in range(1, 100):
+        UPDATE_EVENT.clear()            # not update now
+        ROLLING_EVENT.set()             # start to roll out
+        workers = [traj_worker(wid=i) for i in range(N_WORKER)]
 
-    GLOBAL_UPDATE_COUNTER, GLOBAL_EP = 0, 0
-    GLOBAL_RUNNING_R = []
-    COORD = tf.train.Coordinator()
-    QUEUE = queue.Queue()           # workers putting data in this queue
-    threads = []
-    for worker in workers:          # worker threads
-        t = threading.Thread(target=worker.get_traj_worker, args=())
-        t.start()                   # training
-        threads.append(t)
-    # add a PPO updating thread
-    threads.append(threading.Thread(target=update,))
-    threads[-1].start()
-    COORD.join(threads)
+        GLOBAL_UPDATE_COUNTER, GLOBAL_EP = 0, 0
+        GLOBAL_RUNNING_R = []
+        COORD = tf.train.Coordinator()
+        QUEUE = queue.Queue()           # workers putting data in this queue
+        threads = []
+        for worker in workers:          # worker threads
+            t = threading.Thread(target=worker.get_traj_worker, args=())
+            t.start()                   # training
+            threads.append(t)
+        # add a PPO updating thread
+        threads.append(threading.Thread(target=update,))
+        threads[-1].start()
+        COORD.join(threads)
+        test(i+1)
