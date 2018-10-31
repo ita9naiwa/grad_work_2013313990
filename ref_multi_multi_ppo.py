@@ -29,7 +29,7 @@ pa.compute_dependent_parameters()
 state_dim = (pa.network_input_width * pa.network_input_height)
 action_dim = pa.num_nw + 1
 pg_learner = reinforce.model(sess, state_dim, action_dim,
-                             learning_rate=0.0001, network_widths=[20])
+                             learning_rate=0.01, network_widths=[20], update_step=30)
 def generate_sequence_work(pa, seed=42):
     np.random.seed(seed)
     simu_len = pa.simu_len * pa.num_ex
@@ -252,9 +252,11 @@ class traj_worker(object):
                 ROLLING_EVENT.clear()       # stop collecting data
                 UPDATE_EVENT.set()          # globalPPO update
 
+
             GLOBAL_EP += 1
             if GLOBAL_EP >= EP_MAX:
                 COORD.request_stop()
+
             print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid, '|avg slowdown: %.2f' % np.mean(all_slowdown))
 
 
