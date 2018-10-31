@@ -120,10 +120,8 @@ class Worker(object):
 
                 GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
                 if t == EP_LEN - 1 or GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE or done:
-                    if done:
-                        v_s_ = 0                                # end of episode
-                    else:
-                        v_s_ = self.ppo.get_v(s_, self.ppo.choose_action(s_))
+
+                    v_s_ = 0                                # end of episode
 
                     discounted_r = []                           # compute discounted reward
                     for r in buffer_r[::-1]:
