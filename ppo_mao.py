@@ -15,20 +15,61 @@ import numpy as np
 import matplotlib.pyplot as plt
 import gym, threading, queue
 
+from src.deeprm import parameters
+from src.deeprm import environment
+from src.utils import *
+import pickle
 EP_MAX = 1000
 EP_LEN = 500
 N_WORKER = 8                # parallel workers
 GAMMA = 0.9                 # reward discount factor
 A_LR = 0.0001               # learning rate for actor
+C_LR = 0.0001               # learning rate for critic
 MIN_BATCH_SIZE = 64         # minimum batch size for updating PPO
 UPDATE_STEP = 15            # loop update operation n-steps
 EPSILON = 0.2               # for clipping surrogate objective
 GAME = 'CartPole-v0'
 
-env = gym.make(GAME)
-S_DIM = env.observation_space.shape[0]
-A_DIM = env.action_space.n
 
+pa = parameters.Parameters()
+pa.compute_dependent_parameters()
+pa.num_ex = 50
+env = environment.Env(pa)
+ob = env.reset()
+ob = flatten(ob)
+del env
+sess = tf.Session()
+state_dim = len(ob)
+action_dim = pa.num_nw + 1
+discount_factor = 1.00
+num_episodes = 1000
+
+def generate_sequence_work(pa, seed=42):
+    np.random.seed(seed)
+    simu_len = pa.simu_len * pa.num_ex
+    nw_dist = pa.dist.bi_model_dist
+    nw_len_seq = np.zeros(simu_len, dtype=int)
+    nw_size_seq = np.zeros((simu_len, pa.num_res), dtype=int)
+    for i in range(simu_len):
+        if np.random.rand() < pa.new_job_rate:  # a new job comes
+            nw_len_seq[i], nw_size_seq[i, :] = nw_dist()
+    nw_len_seq = np.reshape(nw_len_seq, [pa.num_ex, pa.simu_len])
+    nw_size_seq = np.reshape(nw_size_seq, [pa.num_ex, pa.simu_len, pa.num_res])
+    return nw_len_seq, nw_size_seq
+
+nw_len_seqs, nw_size_seqs = generate_sequence_work(pa, seed=42)
+
+
+
+def get_env():
+    return environment.Env(pa, nw_len_seqs=nw_len_seqs, nw_size_seqs=nw_size_seqs, end='all_done')
+
+with open('test_env.pickle', 'rb') as f:
+    te_env = pickle.load(f)
+
+env = get_env()
+state_dim = S_DIM = pa.network_input_width * pa.network_input_height
+action_dim = A_DIM = pa.num_nw
 
 class PPONet(object):
     def __init__(self):
@@ -36,6 +77,15 @@ class PPONet(object):
         self.tfs = tf.placeholder(tf.float32, [None, S_DIM], 'state')
         self.tfa = tf.placeholder(tf.int32, [None, ], 'action')
 
+        # critic
+        w_init = tf.random_normal_initializer(0., .1)
+        lc = tf.layers.dense(self.tfs, 20, tf.nn.relu, kernel_initializer=w_init, name='lc')
+
+        self.v = tf.layers.dense(lc, 1)
+        self.tfdc_r = tf.placeholder(tf.float32, [None, 1], 'discounted_r')
+        self.advantage = self.tfdc_r - self.v
+        self.closs = tf.reduce_mean(tf.square(self.advantage))
+        self.ctrain_op = tf.train.AdamOptimizer(C_LR).minimize(self.closs)
 
         # actor
         self.pi, pi_params = self._build_anet('pi', trainable=True)
@@ -47,11 +97,12 @@ class PPONet(object):
         a_indices = tf.stack([tf.range(tf.shape(self.tfa)[0], dtype=tf.int32), self.tfa], axis=1)
         pi_prob = tf.gather_nd(params=self.pi, indices=a_indices)   # shape=(None, )
         oldpi_prob = tf.gather_nd(params=oldpi, indices=a_indices)  # shape=(None, )
-        ratio = pi_prob / oldpi_prob
+        ratio = pi_prob/oldpi_prob
         surr = ratio * self.tfadv                       # surrogate loss
 
         self.aloss = -tf.reduce_mean(tf.minimum(        # clipped surrogate objective
-            surr, tf.clip_by_value(ratio, 1. - EPSILON, 1. + EPSILON) * self.tfadv))
+            surr,
+            tf.clip_by_value(ratio, 1. - EPSILON, 1. + EPSILON) * self.tfadv))
 
         self.atrain_op = tf.train.AdamOptimizer(A_LR).minimize(self.aloss)
         self.sess.run(tf.global_variables_initializer())
@@ -65,17 +116,17 @@ class PPONet(object):
                 data = [QUEUE.get() for _ in range(QUEUE.qsize())]      # collect data from all workers
                 data = np.vstack(data)
                 s, a, r = data[:, :S_DIM], data[:, S_DIM: S_DIM + 1].ravel(), data[:, -1:]
-                adv = r
+                adv = self.sess.run(self.advantage, {self.tfs: s, self.tfdc_r: r})
                 # update actor and critic in a update loop
                 [self.sess.run(self.atrain_op, {self.tfs: s, self.tfa: a, self.tfadv: adv}) for _ in range(UPDATE_STEP)]
+                [self.sess.run(self.ctrain_op, {self.tfs: s, self.tfdc_r: r}) for _ in range(UPDATE_STEP)]
                 UPDATE_EVENT.clear()        # updating finished
                 GLOBAL_UPDATE_COUNTER = 0   # reset counter
                 ROLLING_EVENT.set()         # set roll-out available
 
     def _build_anet(self, name, trainable):
         with tf.variable_scope(name):
-            l_a = tf.layers.dense(self.tfs, 50, tf.nn.relu, trainable=trainable)
-            l_a = tf.layers.dense(l_a, 50, tf.nn.relu, trainable=trainable)
+            l_a = tf.layers.dense(self.tfs, 20, tf.nn.relu, trainable=trainable)
             a_prob = tf.layers.dense(l_a, A_DIM, tf.nn.softmax, trainable=trainable)
         params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=name)
         return a_prob, params
@@ -86,18 +137,22 @@ class PPONet(object):
                                       p=prob_weights.ravel())  # select action w.r.t the actions prob
         return action
 
+    def get_v(self, s):
+        if s.ndim < 2: s = s[np.newaxis, :]
+        return self.sess.run(self.v, {self.tfs: s})[0, 0]
 
 
 class Worker(object):
     def __init__(self, wid):
         self.wid = wid
-        self.env = gym.make(GAME).unwrapped
+        self.env = get_env()
         self.ppo = GLOBAL_PPO
 
     def work(self):
         global GLOBAL_EP, GLOBAL_RUNNING_R, GLOBAL_UPDATE_COUNTER
         while not COORD.should_stop():
             s = self.env.reset()
+            s = flatten(s)
             ep_r = 0
             buffer_s, buffer_a, buffer_r = [], [], []
             for t in range(EP_LEN):
@@ -106,13 +161,12 @@ class Worker(object):
                     buffer_s, buffer_a, buffer_r = [], [], []   # clear history buffer, use new policy to collect data
                 a = self.ppo.choose_action(s)
                 s_, r, done, _ = self.env.step(a)
-
+                s_ = flatten(s_)
                 if done:
                      r = -10
-
                 buffer_s.append(s)
                 buffer_a.append(a)
-                buffer_r.append((r-1) / 5)                           # 0 for not down, -11 for down. Reward engineering
+                buffer_r.append( (r-1) /10)                           # 0 for not down, -11 for down. Reward engineering
                 s = s_
                 ep_r += r
 
@@ -121,7 +175,7 @@ class Worker(object):
                     if done:
                         v_s_ = 0                                # end of episode
                     else:
-                        v_s_ = 0
+                        v_s_ = self.ppo.get_v(s_)
 
                     discounted_r = []                           # compute discounted reward
                     for r in buffer_r[::-1]:
@@ -131,7 +185,6 @@ class Worker(object):
 
                     bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
                     buffer_s, buffer_a, buffer_r = [], [], []
-
                     ret = np.hstack((bs, ba, br))
                     QUEUE.put(ret)          # put data in the queue
                     if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
