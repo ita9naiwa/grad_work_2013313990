@@ -37,6 +37,19 @@ class PPONet(object):
         self.tfs = tf.placeholder(tf.float32, [None, S_DIM], 'state')
         self.tfa = tf.placeholder(tf.int32, [None, ], 'action')
 
+        # critic
+        w_init = tf.random_normal_initializer(0., .1)
+        lc = tf.layers.dense(self.tfs, 200, tf.nn.relu, kernel_initializer=w_init, name='lc')
+        rc = tf.one_hot(self.tfa, A_DIM, name='rc0')
+        rc = tf.layers.dense(rc, 100, tf.nn.relu, kernel_initializer=w_init, name='rc')
+        rc = tf.layers.dense(rc, 100, tf.nn.relu, kernel_initializer=w_init, name='rc2')
+        lc = tf.concat([lc, rc], axis=1)
+
+        self.v = tf.layers.dense(lc, 1)
+        self.tfdc_r = tf.placeholder(tf.float32, [None, 1], 'discounted_r')
+        self.advantage = self.tfdc_r - self.v
+        self.closs = tf.reduce_mean(tf.square(self.advantage))
+        self.ctrain_op = tf.train.AdamOptimizer(C_LR).minimize(self.closs)
 
         # actor
         self.pi, pi_params = self._build_anet('pi', trainable=True)
@@ -52,7 +65,8 @@ class PPONet(object):
         surr = ratio * self.tfadv                       # surrogate loss
 
         self.aloss = -tf.reduce_mean(tf.minimum(        # clipped surrogate objective
-            surr, tf.clip_by_value(ratio, 1. - EPSILON, 1. + EPSILON) * self.tfadv))
+            surr,
+            tf.clip_by_value(ratio, 1. - EPSILON, 1. + EPSILON) * self.tfadv))
 
         self.atrain_op = tf.train.AdamOptimizer(A_LR).minimize(self.aloss)
         self.sess.run(tf.global_variables_initializer())
@@ -66,9 +80,10 @@ class PPONet(object):
                 data = [QUEUE.get() for _ in range(QUEUE.qsize())]      # collect data from all workers
                 data = np.vstack(data)
                 s, a, r = data[:, :S_DIM], data[:, S_DIM: S_DIM + 1].ravel(), data[:, -1:]
-                adv = r
+                adv = self.sess.run(self.advantage, {self.tfs: s, self.tfa: a, self.tfdc_r: r})
                 # update actor and critic in a update loop
                 [self.sess.run(self.atrain_op, {self.tfs: s, self.tfa: a, self.tfadv: adv}) for _ in range(UPDATE_STEP)]
+                [self.sess.run(self.ctrain_op, {self.tfs: s, self.tfa: a, self.tfdc_r: r}) for _ in range(UPDATE_STEP)]
                 UPDATE_EVENT.clear()        # updating finished
                 GLOBAL_UPDATE_COUNTER = 0   # reset counter
                 ROLLING_EVENT.set()         # set roll-out available
@@ -132,8 +147,13 @@ class Worker(object):
 
                     bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
                     buffer_s, buffer_a, buffer_r = [], [], []
-
+                    print("__")
+                    print(bs.shape)
+                    print(ba.shape)
+                    print(br.shape)
                     ret = np.hstack((bs, ba, br))
+                    print(ret.shape)
+                    print("__")
                     QUEUE.put(ret)          # put data in the queue
                     if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
                         ROLLING_EVENT.clear()       # stop collecting data
