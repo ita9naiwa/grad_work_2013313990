@@ -19,12 +19,12 @@ from src.deeprm.environment import Env
 from src.utils import *
 
 EP_MAX = 500
-EP_LEN = 1000
-N_WORKER = 8                # parallel workers
+EP_LEN = 50
+N_WORKER = 4                # parallel workers
 GAMMA = 0.99                # reward discount factor
 A_LR = 0.001               # learning rate for actor
 C_LR = 0.001               # learning rate for critic
-MIN_BATCH_SIZE = 32         # minimum batch size for updating PPO
+MIN_BATCH_SIZE = 4         # minimum batch size for updating PPO
 UPDATE_STEP = 15            # loop update operation n-steps
 EPSILON = 0.2               # for clipping surrogate objective
 
@@ -106,14 +106,16 @@ class PPONet(object):
         while not COORD.should_stop():
             if GLOBAL_EP < EP_MAX:
                 UPDATE_EVENT.wait()                     # wait until get batch of data
+                #print("Update cllaed!")
                 self.sess.run(self.update_oldpi_op)     # copy pi to old pi
                 data = [QUEUE.get() for _ in range(QUEUE.qsize())]      # collect data from all workers
                 data = np.vstack(data)
                 s, a, r = data[:, :S_DIM], data[:, S_DIM: S_DIM + 1].ravel(), data[:, -1:]
-                adv = self.sess.run(self.advantage, {self.tfs: s, self.tfa: a, self.tfdc_r: r})
+                #adv = self.sess.run(self.advantage, {self.tfs: s, self.tfa: a, self.tfdc_r: r})
                 # update actor and critic in a update loop
-                [self.sess.run(self.atrain_op, {self.tfs: s, self.tfa: a, self.tfadv: adv}) for _ in range(UPDATE_STEP)]
-                [self.sess.run(self.ctrain_op, {self.tfs: s, self.tfa: a, self.tfdc_r: r}) for _ in range(UPDATE_STEP)]
+                loss = [self.sess.run([self.aloss, self.atrain_op], {self.tfs: s, self.tfa: a, self.tfadv: r})[0] for _ in range(UPDATE_STEP)]
+                print(np.mean(loss))
+                #[self.sess.run(self.ctrain_op, {self.tfs: s, self.tfa: a, self.tfdc_r: r}) for _ in range(UPDATE_STEP)]
                 UPDATE_EVENT.clear()        # updating finished
                 GLOBAL_UPDATE_COUNTER = 0   # reset counter
                 ROLLING_EVENT.set()         # set roll-out available
@@ -121,8 +123,8 @@ class PPONet(object):
     def _build_anet(self, name, trainable):
         with tf.variable_scope(name):
             w_init = tf.contrib.layers.xavier_initializer()
-            l_a = tf.layers.dense(self.tfs, 30, tf.nn.relu, trainable=trainable, kernel_initializer=w_init)
-            l_a = tf.layers.dense(l_a, 30, tf.nn.relu, trainable=trainable, kernel_initializer=w_init)
+            l_a = tf.layers.dense(self.tfs, 50, tf.nn.relu, trainable=trainable, kernel_initializer=w_init)
+            l_a = tf.layers.dense(l_a, 50, tf.nn.relu, trainable=trainable, kernel_initializer=w_init)
             a_prob = tf.layers.dense(l_a, A_DIM, tf.nn.softmax, trainable=trainable, kernel_initializer=w_init)
         params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=name)
         return a_prob, params
@@ -210,6 +212,7 @@ class Worker(object):
         self.ppo = GLOBAL_PPO
 
     def work(self):
+        print("worker id %d is on" % self.wid)
         global GLOBAL_EP, GLOBAL_RUNNING_R, GLOBAL_UPDATE_COUNTER
         while not COORD.should_stop():
             trajs = []
@@ -239,7 +242,8 @@ class Worker(object):
             all_eplens.append(np.array([len(traj["reward"]) for traj in trajs]))  # episode lengths
             GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
             if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
-                all_ob = np.transpose(all_ob)
+                all_ob = np.array(all_ob)
+                all_ob = all_ob.reshape((all_ob.shape[1], all_ob.shape[2]))
                 all_action = np.transpose(all_action)
                 all_adv = np.transpose(all_adv)
                 #bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
@@ -252,17 +256,11 @@ class Worker(object):
                 if GLOBAL_EP >= EP_MAX:         # stop training
                     COORD.request_stop()
                     break
-
-                if done:
-                    break
             #slowdown = get_avg_slowdown(info)
             ep_len = t
-            #print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid,  '|Ep_r: %.2f' % ep_r,
-            #'slowdown: %0.2f' % slowdown, "ep_len: %d" % ep_len)
-            # record reward changes, plot later
-            if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(np.mean(all_eplens))
-            else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1] * 0.9 + ep_r * 0.1)
+            print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid)
             GLOBAL_EP += 1
+            self.env.seq_idx = np.random.randint(pa.num_ex)
 
 
 
