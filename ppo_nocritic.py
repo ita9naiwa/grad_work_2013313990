@@ -17,10 +17,11 @@ import gym, threading, queue
 
 EP_MAX = 1000
 EP_LEN = 500
-N_WORKER = 10              # parallel workers
+N_WORKER = 8                # parallel workers
 GAMMA = 0.9                 # reward discount factor
-A_LR = 0.001               # learning rate for actor
-MIN_BATCH_SIZE = 1         # minimum batch size for updating PPO
+A_LR = 0.0001               # learning rate for actor
+C_LR = 0.0001               # learning rate for critic
+MIN_BATCH_SIZE = 16         # minimum batch size for updating PPO
 UPDATE_STEP = 20            # loop update operation n-steps
 EPSILON = 0.2               # for clipping surrogate objective
 GAME = 'CartPole-v0'
@@ -35,6 +36,20 @@ class PPONet(object):
         self.sess = tf.Session()
         self.tfs = tf.placeholder(tf.float32, [None, S_DIM], 'state')
         self.tfa = tf.placeholder(tf.int32, [None, ], 'action')
+
+        # critic
+        w_init = tf.random_normal_initializer(0., .1)
+        lc = tf.layers.dense(self.tfs, 200, tf.nn.relu, kernel_initializer=w_init, name='lc')
+        rc = tf.one_hot(self.tfa, A_DIM, name='rc0')
+        rc = tf.layers.dense(rc, 100, tf.nn.relu, kernel_initializer=w_init, name='rc')
+        rc = tf.layers.dense(rc, 100, tf.nn.relu, kernel_initializer=w_init, name='rc2')
+        lc = tf.concat([lc, rc], axis=1)
+
+        self.v = tf.layers.dense(lc, 1)
+        self.tfdc_r = tf.placeholder(tf.float32, [None, 1], 'discounted_r')
+        self.advantage = self.tfdc_r - self.v
+        self.closs = tf.reduce_mean(tf.square(self.advantage))
+        self.ctrain_op = tf.train.AdamOptimizer(C_LR).minimize(self.closs)
 
         # actor
         self.pi, pi_params = self._build_anet('pi', trainable=True)
@@ -65,10 +80,10 @@ class PPONet(object):
                 data = [QUEUE.get() for _ in range(QUEUE.qsize())]      # collect data from all workers
                 data = np.vstack(data)
                 s, a, r = data[:, :S_DIM], data[:, S_DIM: S_DIM + 1].ravel(), data[:, -1:]
-                adv  = r
+                adv = self.sess.run(self.advantage, {self.tfs: s, self.tfa: a, self.tfdc_r: r})
                 # update actor and critic in a update loop
                 [self.sess.run(self.atrain_op, {self.tfs: s, self.tfa: a, self.tfadv: adv}) for _ in range(UPDATE_STEP)]
-                #[self.sess.run(self.ctrain_op, {self.tfs: s, self.tfa: a, self.tfdc_r: r}) for _ in range(UPDATE_STEP)]
+                [self.sess.run(self.ctrain_op, {self.tfs: s, self.tfa: a, self.tfdc_r: r}) for _ in range(UPDATE_STEP)]
                 UPDATE_EVENT.clear()        # updating finished
                 GLOBAL_UPDATE_COUNTER = 0   # reset counter
                 ROLLING_EVENT.set()         # set roll-out available
@@ -119,8 +134,10 @@ class Worker(object):
 
                 GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
                 if t == EP_LEN - 1 or GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE or done:
-
-                    v_s_ = 0                                # end of episode
+                    if done:
+                        v_s_ = 0                                # end of episode
+                    else:
+                        v_s_ = self.ppo.get_v(s_, self.ppo.choose_action(s_))
 
                     discounted_r = []                           # compute discounted reward
                     for r in buffer_r[::-1]:
