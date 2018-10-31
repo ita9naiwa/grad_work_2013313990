@@ -29,10 +29,11 @@ def generate_sequence_work(pa, seed=42):
 
 pa = Parameters()
 pa.compute_dependent_parameters()
+pa.num_ex = 100
 nw_len_seqs, nw_size_seqs = generate_sequence_work(pa, seed=35)
 # rew type list:
 # delay, mine,
-env = Env(pa, nw_len_seqs=nw_len_seqs, nw_size_seqs=nw_size_seqs, end='all_done', reward_type='mine')
+env = Env(pa, nw_len_seqs=nw_len_seqs, nw_size_seqs=nw_size_seqs, end='all_done', reward_type='delay')
 with open('test_env.pickle', 'rb') as f:
     te_env = pickle.load(f)
 

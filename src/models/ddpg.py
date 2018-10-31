@@ -28,7 +28,7 @@ class DDPG(object):
         self.critic = self.create_critic_network("critic")
         self.target_critic = self.create_critic_network("target_critic")
 
-        # calc critic loss
+        # calc critic lossD
         self.y_i = tflearn.input_data(shape=(None, 1))
         self.critic_loss = tf.reduce_mean(tf.square(tf.subtract(self.critic['out'], self.y_i)))
         self.optimizer_critic_loss = tf.train.AdamOptimizer(self.critic_learning_rate).minimize(self.critic_loss)
