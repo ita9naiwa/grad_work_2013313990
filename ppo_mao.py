@@ -18,8 +18,8 @@ from src.deeprm.parameters import Parameters
 from src.deeprm.environment import Env
 from src.utils import *
 
-EP_MAX = 500
-EP_LEN = 50
+EP_MAX = 100
+EP_LEN = 100
 N_WORKER = 4                # parallel workers
 GAMMA = 0.99                # reward discount factor
 A_LR = 0.001               # learning rate for actor

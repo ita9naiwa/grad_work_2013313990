@@ -13,7 +13,7 @@ import src.models.ddpg as ddpg
 
 pa = parameters.Parameters()
 ###############
-pa.num_ex = 50
+pa.num_ex = 100
 pa.num_seq_per_batch = 20
 ###############
 pa.compute_dependent_parameters()
