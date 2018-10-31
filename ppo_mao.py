@@ -21,13 +21,13 @@ from src.utils import *
 import pickle
 EP_MAX = 1000
 EP_LEN = 500
-N_WORKER = 8                # parallel workers
+N_WORKER = 16                # parallel workers
 GAMMA = 0.9                 # reward discount factor
 A_LR = 0.0001               # learning rate for actor
 C_LR = 0.0001               # learning rate for critic
-MIN_BATCH_SIZE = 64         # minimum batch size for updating PPO
+MIN_BATCH_SIZE = 32         # minimum batch size for updating PPO
 UPDATE_STEP = 15            # loop update operation n-steps
-EPSILON = 0.2               # for clipping surrogate objective
+EPSILON = 0.1               # for clipping surrogate objective
 GAME = 'CartPole-v0'
 
 
@@ -80,7 +80,6 @@ class PPONet(object):
         # critic
         w_init = tf.random_normal_initializer(0., .1)
         lc = tf.layers.dense(self.tfs, 20, tf.nn.relu, kernel_initializer=w_init, name='lc')
-
         self.v = tf.layers.dense(lc, 1)
         self.tfdc_r = tf.placeholder(tf.float32, [None, 1], 'discounted_r')
         self.advantage = self.tfdc_r - self.v
@@ -151,6 +150,7 @@ class Worker(object):
     def work(self):
         global GLOBAL_EP, GLOBAL_RUNNING_R, GLOBAL_UPDATE_COUNTER
         while not COORD.should_stop():
+            self.env.seq_no = np.random.randint(0, pa.num_ex)
             s = self.env.reset()
             s = flatten(s)
             ep_r = 0
@@ -160,7 +160,7 @@ class Worker(object):
                     ROLLING_EVENT.wait()                        # wait until PPO is updated
                     buffer_s, buffer_a, buffer_r = [], [], []   # clear history buffer, use new policy to collect data
                 a = self.ppo.choose_action(s)
-                s_, r, done, _ = self.env.step(a)
+                s_, r, done, info = self.env.step(a)
                 s_ = flatten(s_)
                 if done:
                      r = -10
@@ -196,12 +196,13 @@ class Worker(object):
                         break
 
                     if done: break
-
+            slowdown = get_avg_slowdown(info)
             # record reward changes, plot later
             if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(ep_r)
             else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1]*0.9+ep_r*0.1)
             GLOBAL_EP += 1
-            print('{0:.1f}%'.format(GLOBAL_EP/EP_MAX*100), '|W%i' % self.wid,  '|Ep_r: %.2f' % ep_r,)
+            print('{0:.1f}%'.format(GLOBAL_EP/EP_MAX*100), '|W%i' % self.wid,
+                '|Ep_r: %.2f' % ep_r, "|ep_len: %d" % t, "|slowdown: %0.1f" % slowdown)
 
 
 if __name__ == '__main__':
@@ -224,15 +225,3 @@ if __name__ == '__main__':
     threads.append(threading.Thread(target=GLOBAL_PPO.update,))
     threads[-1].start()
     COORD.join(threads)
-
-    # plot reward change and test
-    plt.plot(np.arange(len(GLOBAL_RUNNING_R)), GLOBAL_RUNNING_R)
-    plt.xlabel('Episode'); plt.ylabel('Moving reward'); plt.ion(); plt.show()
-    env = gym.make('CartPole-v0')
-    while True:
-        s = env.reset()
-        for t in range(1000):
-            env.render()
-            s, r, done, info = env.step(GLOBAL_PPO.choose_action(s))
-            if done:
-                break
