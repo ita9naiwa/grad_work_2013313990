@@ -21,7 +21,7 @@ action_dim = pa.num_nw + 1
 act_list = np.arange(action_dim)
 
 pg_learner = reinforce.model(sess, state_dim, action_dim,
-                             learning_rate=0.0001, network_widths=[20])
+                             learning_rate=0.001, network_widths=[20])
 
 def discount(x, gamma):
     """
