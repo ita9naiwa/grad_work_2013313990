@@ -253,6 +253,8 @@ class traj_worker(object):
                 UPDATE_EVENT.set()          # globalPPO update
 
             GLOBAL_EP += 1
+            if GLOBAL_EP >= EP_MAX:
+                COORD.request_stop()
             print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid, '|avg slowdown: %.2f' % np.mean(all_slowdown))
 
 
