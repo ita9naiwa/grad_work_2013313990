@@ -17,7 +17,7 @@ import gym, threading, queue
 
 EP_MAX = 1000
 EP_LEN = 500
-N_WORKER = 4                # parallel workers
+N_WORKER = 4              # parallel workers
 GAMMA = 0.9                 # reward discount factor
 A_LR = 0.001               # learning rate for actor
 MIN_BATCH_SIZE = 1         # minimum batch size for updating PPO
@@ -101,82 +101,55 @@ class Worker(object):
     def work(self):
         global GLOBAL_EP, GLOBAL_RUNNING_R, GLOBAL_UPDATE_COUNTER
         while not COORD.should_stop():
+            s = self.env.reset()
+            ep_r = 0
+            buffer_s, buffer_a, buffer_r = [], [], []
+            for t in range(EP_LEN):
+                if not ROLLING_EVENT.is_set():                  # while global PPO is updating
+                    ROLLING_EVENT.wait()                        # wait until PPO is updated
+                    buffer_s, buffer_a, buffer_r = [], [], []   # clear history buffer, use new policy to collect data
+                a = self.ppo.choose_action(s)
+                s_, r, done, _ = self.env.step(a)
+                if done:
+                     r = -10
+                buffer_s.append(s)
+                buffer_a.append(a)
+                buffer_r.append(r - 1)                           # 0 for not down, -11 for down. Reward engineering
+                s = s_
+                ep_r += r
 
-            n_samples = 20
-            if not ROLLING_EVENT.is_set():                  # while global PPO is updating
-                ROLLING_EVENT.wait()                        # wait until PPO is updated
-            job_buffers = []
-            eplens = []
-            eprews = []
-            for ss in range(n_samples):
-                buffer_y, buffer_s, buffer_a, buffer_r = [], [], [], []
-                ep_r = 0
-                s = self.env.reset()
-                for t in range(EP_LEN):
-                    a = self.ppo.choose_action(s)
-                    s_, r, done, _ = self.env.step(a)
+                GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
+                if t == EP_LEN - 1 or GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE or done:
                     if done:
-                        r = -10
-                    buffer_s.append(s)
-                    buffer_a.append(a)
-                    buffer_r.append(r - 1)                           # 0 for not down, -11 for down. Reward engineering
-                    s = s_
-                    ep_r += r
-                    if t == EP_LEN - 1 or done:
-                        disc_vec = np.array(buffer_r, dtype=np.float32)
-                        for i in range(1, len(buffer_y)):
-                            disc_vec[i:] *= GAMMA
-                        for i in range(len(buffer_r)):
-                            y_i = np.sum(disc_vec[i:]) / (GAMMA ** i)
-                            buffer_y.append(y_i)
-                        job_buffers.append((buffer_s, buffer_a, buffer_r, buffer_y))
-                        eplens.append(t)
-                        eprews.append(ep_r)
+                        v_s_ = 0                                # end of episode
+                    else:
+                        v_s_ = self.ppo.get_v(s_, self.ppo.choose_action(s_))
+
+                    discounted_r = []                           # compute discounted reward
+                    for r in buffer_r[::-1]:
+                        v_s_ = r + GAMMA * v_s_
+                        discounted_r.append(v_s_)
+                    discounted_r.reverse()
+
+                    bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
+                    buffer_s, buffer_a, buffer_r = [], [], []
+                    ret = np.hstack((bs, ba, br))
+                    QUEUE.put(ret)          # put data in the queue
+                    if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
+                        ROLLING_EVENT.clear()       # stop collecting data
+                        UPDATE_EVENT.set()          # globalPPO update
+
+                    if GLOBAL_EP >= EP_MAX:         # stop training
+                        COORD.request_stop()
                         break
 
-
-
-            max_job_length = np.max([len(x[0]) for x in job_buffers])
-            baseline = np.zeros(shape=(n_samples, max_job_length), dtype=np.float32)
-            ep_lengths = []
-
-            for i in range(n_samples):
-                current_length = len(job_buffers[i][3])
-                ep_lengths.append(current_length)
-                baseline[i, :current_length] = job_buffers[i][3]
-            baseline = np.mean(baseline, axis=0)
-            sts, aas, vvs = [], [], []
-            for t in range(max_job_length):
-                for i in range(n_samples):
-                    if ep_lengths[i] <= t:
-                        continue
-                    s = job_buffers[i][0][t]
-                    a = job_buffers[i][1][t]
-                    y = job_buffers[i][3][t]
-                    b = baseline[t]
-                    var = y - b
-                    sts.append(s)
-                    aas.append(a)
-                    vvs.append(var)
-            bs, ba, br = np.vstack(sts), np.vstack(aas), np.vstack(vvs)
-            buffer_s, buffer_a, buffer_r = [], [], []
-            ret = np.hstack((bs, ba, br))
-            GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
-            #or GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE
-            QUEUE.put(ret)          # put data in the queue
-            if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
-                ROLLING_EVENT.clear()       # stop collecting data
-                UPDATE_EVENT.set()          # globalPPO update
-
-            if GLOBAL_EP >= EP_MAX:         # stop training
-                COORD.request_stop()
-                break
+                    if done: break
 
             # record reward changes, plot later
-            if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(np.mean(eprews))
-            else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1]*0.9+np.mean(eprews)*0.1)
+            if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(ep_r)
+            else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1]*0.9+ep_r*0.1)
             GLOBAL_EP += 1
-            print('{0:.1f}%'.format(GLOBAL_EP/EP_MAX*100), '|W%i' % self.wid,  '|Ep_r: %.2f' % np.mean(eprews), "episode_avg_length : %0.2f" % np.mean(eplens))
+            print('{0:.1f}%'.format(GLOBAL_EP/EP_MAX*100), '|W%i' % self.wid,  '|Ep_r: %.2f' % ep_r,)
 
 
 if __name__ == '__main__':
