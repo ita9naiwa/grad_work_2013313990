@@ -21,8 +21,8 @@ N_WORKER = 8                # parallel workers
 GAMMA = 0.9                 # reward discount factor
 A_LR = 0.0001               # learning rate for actor
 C_LR = 0.0001               # learning rate for critic
-MIN_BATCH_SIZE = 16         # minimum batch size for updating PPO
-UPDATE_STEP = 20            # loop update operation n-steps
+MIN_BATCH_SIZE = 64         # minimum batch size for updating PPO
+UPDATE_STEP = 15            # loop update operation n-steps
 EPSILON = 0.2               # for clipping surrogate objective
 GAME = 'CartPole-v0'
 
@@ -128,7 +128,7 @@ class Worker(object):
                      r = -10
                 buffer_s.append(s)
                 buffer_a.append(a)
-                buffer_r.append(r - 1)                           # 0 for not down, -11 for down. Reward engineering
+                buffer_r.append( (r-1) /10)                           # 0 for not down, -11 for down. Reward engineering
                 s = s_
                 ep_r += r
 
@@ -147,6 +147,7 @@ class Worker(object):
 
                     bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
                     buffer_s, buffer_a, buffer_r = [], [], []
+
                     ret = np.hstack((bs, ba, br))
                     QUEUE.put(ret)          # put data in the queue
                     if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
