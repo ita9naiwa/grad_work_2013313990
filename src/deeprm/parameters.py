@@ -93,7 +93,7 @@ class Parameters:
 
         self.num_epochs = 10000         # number of training epochs
         self.simu_len = 50             # length of the busy cycle that repeats itself
-        self.num_ex = 1000                # number of sequences
+        self.num_ex = 50                # number of sequences
         self.output_freq = 50          # interval for output and store parameters
         self.num_seq_per_batch = 20    # number of sequences to compute baseline
         self.episode_max_length = 400  # enforcing an artificial terminal
