@@ -42,6 +42,8 @@ def generate_sequence_work(pa, seed=42):
     return nw_len_seq, nw_size_seq
 
 pa = Parameters()
+pa.num_ex = 5
+pa.num_seq_per_batch = 3
 pa.compute_dependent_parameters()
 nw_len_seqs, nw_size_seqs = generate_sequence_work(pa, seed=35)
 
@@ -53,7 +55,7 @@ def get_env_with_rand_seq():
 
 env = get_env_with_rand_seq()
 
-S_DIM = pa.network_input_width * pa.network_input_height
+state_dim = S_DIM = pa.network_input_width * pa.network_input_height
 A_DIM = pa.num_nw + 1
 
 
@@ -67,9 +69,9 @@ class PPONet(object):
         #w_init = tf.random_normal_initializer(0., .1)
         w_init = tf.contrib.layers.xavier_initializer()
         lc = tf.layers.dense(self.tfs, 200, tf.nn.relu, kernel_initializer=w_init, name='lc')
-        rc = tf.one_hot(self.tfa, A_DIM, name='rc0')
-        rc = tf.layers.dense(rc, 100, tf.nn.relu, kernel_initializer=w_init, name='rc')
-        lc = tf.concat([lc, rc], axis=1)
+        #rc = tf.one_hot(self.tfa, A_DIM, name='rc0')
+        #rc = tf.layers.dense(rc, 100, tf.nn.relu, kernel_initializer=w_init, name='rc')
+        #lc = tf.concat([lc, rc], axis=1)
         lc = tf.layers.dense(lc, 100, tf.nn.relu, kernel_initializer=w_init, name='lc_tot')
 
         self.v = tf.layers.dense(lc, 1)
@@ -135,6 +137,71 @@ class PPONet(object):
         if s.ndim < 2: s = s[np.newaxis, :]
         return self.sess.run(self.v, {self.tfs: s, self.tfa: [a]})[0, 0]
 
+def get_entropy(vec):
+    entropy = - np.sum(vec * np.log(vec))
+    if np.isnan(entropy):
+        entropy = 0
+    return entropy
+
+def concatenate_all_ob(trajs, pa):
+
+    timesteps_total = 0
+    for i in range(len(trajs)):
+        timesteps_total += len(trajs[i]['reward'])
+
+    all_ob = np.zeros(
+        (timesteps_total, state_dim))
+
+    timesteps = 0
+    for i in range(len(trajs)):
+        for j in range(len(trajs[i]['reward'])):
+            all_ob[timesteps, :] = trajs[i]['ob'][j]
+            timesteps += 1
+
+    return all_ob
+
+def get_traj(model, env, episode_max_length, render=False):
+    """
+    Run model-environment loop for one whole episode (trajectory)
+    Return dictionary of results
+    """
+    env.reset()
+    obs = []
+    acts = []
+    rews = []
+    entropy = []
+    info = []
+
+    ob = env.observe()
+
+    for _ in range(episode_max_length):
+        ob = np.reshape(ob, (state_dim,))
+        a = model.choose_action(ob)
+        obs.append(ob)  # store the ob at current decision making step
+        #q = np.zeros_like(act_prob)
+        #q[a] = 1
+        #acts.append(q)
+        acts.append(a)
+        ob, rew, done, info = env.step(a, repeat=True)
+
+        rews.append(rew)
+        #entropy.append(get_entropy(1.0))
+        entropy.append(1.0)
+        if done:
+            break
+        if render:
+            env.render()
+
+    ob = np.reshape(ob, (state_dim,))
+    obs.append(ob)
+
+    return {'reward': np.array(rews),
+            'ob': np.array(obs),
+            'action': np.array(acts),
+            'entropy': entropy,
+            'info': info
+            }
+
 
 class Worker(object):
     def __init__(self, wid):
@@ -145,55 +212,55 @@ class Worker(object):
     def work(self):
         global GLOBAL_EP, GLOBAL_RUNNING_R, GLOBAL_UPDATE_COUNTER
         while not COORD.should_stop():
+            trajs = []
+            for i in range(pa.num_seq_per_batch):
+                traj = get_traj(self.ppo, self.env, pa.episode_max_length)
+                ep_len = len(traj['reward'])
+                trajs.append(traj)
+            all_ob = []
+            all_action = []
+            all_adv = []
+            all_eprews = []
+            all_eplens = []
+            all_slowdown = []
+            all_entropy = []
+            all_ys = []
+            all_ob.append(concatenate_all_ob(trajs, pa))
+            # Compute discounted sums of rewards
+            rets = [discount(traj["reward"], pa.discount) for traj in trajs]
+            maxlen = max(len(ret) for ret in rets)
+            padded_rets = [np.concatenate([ret, np.zeros(maxlen - len(ret))]) for ret in rets]
+            # Compute time-dependent baseline
+            baseline = np.mean(padded_rets, axis=0)
+            # Compute advantage function
+            advs = [ret - baseline[:len(ret)] for ret in rets]
+            all_action.append(np.concatenate([traj["action"] for traj in trajs]))
+            all_adv.append(np.concatenate(advs))
+            all_eplens.append(np.array([len(traj["reward"]) for traj in trajs]))  # episode lengths
+            GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
+            if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
+                all_ob = np.transpose(all_ob)
+                all_action = np.transpose(all_action)
+                all_adv = np.transpose(all_adv)
+                #bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
+                buffer_s, buffer_a, buffer_r = [], [], []
+                QUEUE.put(np.hstack((all_ob, all_action, all_adv)))          # put data in the queue
+                if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
+                    ROLLING_EVENT.clear()       # stop collecting data
+                    UPDATE_EVENT.set()          # globalPPO update
 
-            self.env.reset()
-            self.env.seq_no = np.random.randint(0, pa.num_ex)
-            s = self.env.observe()
-            s = flatten(s)
-            ep_r = 0
-            buffer_s, buffer_a, buffer_r = [], [], []
-            for t in range(EP_LEN):
-                if not ROLLING_EVENT.is_set():                  # while global PPO is updating
-                    ROLLING_EVENT.wait()                        # wait until PPO is updated
-                    buffer_s, buffer_a, buffer_r = [], [], []   # clear history buffer, use new policy to collect data
-                a = self.ppo.choose_action(s)
-                s_, r, done, info = self.env.step(a)
-                s_ = flatten(s)
-                #if done: r = -10
-                buffer_s.append(s)
-                buffer_a.append(a)
-                buffer_r.append(r)
-                s = s_
-                ep_r += r
+                if GLOBAL_EP >= EP_MAX:         # stop training
+                    COORD.request_stop()
+                    break
 
-                GLOBAL_UPDATE_COUNTER += 1                      # count to minimum batch size, no need to wait other workers
-                if t == EP_LEN - 1 or GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE or done:
-                    v_s_ = self.ppo.get_v(s_, self.ppo.choose_action(s_))
-                    discounted_r = []                           # compute discounted reward
-                    for r in buffer_r[::-1]:
-                        v_s_ = r + GAMMA * v_s_
-                        discounted_r.append(v_s_)
-                    discounted_r.reverse()
-
-                    bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
-                    buffer_s, buffer_a, buffer_r = [], [], []
-                    QUEUE.put(np.hstack((bs, ba, br)))          # put data in the queue
-                    if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
-                        ROLLING_EVENT.clear()       # stop collecting data
-                        UPDATE_EVENT.set()          # globalPPO update
-
-                    if GLOBAL_EP >= EP_MAX:         # stop training
-                        COORD.request_stop()
-                        break
-
-                    if done:
-                        break
-                slowdown = get_avg_slowdown(info)
-                ep_len = t
-            print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid,  '|Ep_r: %.2f' % ep_r,
-            'slowdown: %0.2f' % slowdown, "ep_len: %d" % ep_len)
+                if done:
+                    break
+            #slowdown = get_avg_slowdown(info)
+            ep_len = t
+            #print('{0:.1f}%'.format(GLOBAL_EP / EP_MAX * 100), '|W%i' % self.wid,  '|Ep_r: %.2f' % ep_r,
+            #'slowdown: %0.2f' % slowdown, "ep_len: %d" % ep_len)
             # record reward changes, plot later
-            if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(ep_r)
+            if len(GLOBAL_RUNNING_R) == 0: GLOBAL_RUNNING_R.append(np.mean(all_eplens))
             else: GLOBAL_RUNNING_R.append(GLOBAL_RUNNING_R[-1] * 0.9 + ep_r * 0.1)
             GLOBAL_EP += 1
 
@@ -226,7 +293,7 @@ if __name__ == '__main__':
     GLOBAL_PPO = PPONet()
     UPDATE_EVENT, ROLLING_EVENT = threading.Event(), threading.Event()
     test(0)
-    for i in range(30):
+    for i in range(100):
         UPDATE_EVENT.clear()            # not update now
         ROLLING_EVENT.set()             # start to roll out
         workers = [Worker(wid=i) for i in range(N_WORKER)]

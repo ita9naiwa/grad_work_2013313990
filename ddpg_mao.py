@@ -87,15 +87,7 @@ def __main__():
             #print(a)
             ents.append(calc_entropy(a))
             chosen_action_dist += a
-
-            if current_ep <= 100:
-                if np.random.random() < 0.5:
-                    action = get_sjf_action(env.machine, env.job_slot)
-                else:
-                    action = np.random.choice(action_space)
-            else:
-                action = np.random.choice(action_space, p=a)
-
+            action = np.random.choice(action_space, p=a)
             s2, r, done, info = env.step(action)
             chosen_action_dist[action] = chosen_action_dist[action] + 1
             s2 = flatten(s2)
@@ -126,7 +118,7 @@ def __main__():
 
 
         entropies = []
-        if((1+current_ep) % 50 == 0):
+        if((1+current_ep) % 100 == 0):
             slowdowns = []
             for ex in range(pa.num_ex):
                 s = te_env.reset()

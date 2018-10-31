@@ -175,6 +175,7 @@ def launch(pa, pg_resume=None, render=False, repre='image', end='no_new_job'):
         for ex in tqdm(range(pa.num_ex)):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajs = []
+
             for i in range(pa.num_seq_per_batch):
                 traj = get_traj(model, env, pa.episode_max_length)
                 ep_len = len(traj['reward'])

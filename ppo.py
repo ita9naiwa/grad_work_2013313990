@@ -147,7 +147,14 @@ class Worker(object):
 
                     bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, None]
                     buffer_s, buffer_a, buffer_r = [], [], []
-                    QUEUE.put(np.hstack((bs, ba, br)))          # put data in the queue
+                    print("__")
+                    print(bs.shape)
+                    print(ba.shape)
+                    print(br.shape)
+                    ret = np.hstack((bs, ba, br))
+                    print(ret.shape)
+                    print("__")
+                    QUEUE.put(ret)          # put data in the queue
                     if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
                         ROLLING_EVENT.clear()       # stop collecting data
                         UPDATE_EVENT.set()          # globalPPO update
