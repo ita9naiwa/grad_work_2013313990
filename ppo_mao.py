@@ -162,11 +162,9 @@ class Worker(object):
                 a = self.ppo.choose_action(s)
                 s_, r, done, info = self.env.step(a)
                 s_ = flatten(s_)
-                if done:
-                     r = -10
                 buffer_s.append(s)
                 buffer_a.append(a)
-                buffer_r.append( (r-1) /10)                           # 0 for not down, -11 for down. Reward engineering
+                buffer_r.append(r /10)
                 s = s_
                 ep_r += r
 
