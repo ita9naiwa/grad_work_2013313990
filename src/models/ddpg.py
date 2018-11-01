@@ -122,8 +122,6 @@ class DDPG(object):
             else:
                 y_i[k, 0] = r_i[k] + self.discount * target_q_j[k, 0]
 
-        #print(a_i)
-
         pred_q, _ = self.sess.run(
             [self.critic['out'], self.optimizer_critic_loss],
             feed_dict={
@@ -145,16 +143,17 @@ class DDPG(object):
         with tf.variable_scope(namescope):
             states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
             actions = tflearn.input_data(shape=(None, self.action_dim), dtype=tf.float32, name="actions")
-            net_l = tflearn.fully_connected(inputs, 250, weights_init=w_init)
-            #net_l = tflearn.layers.normalization.batch_normalization(net_l)
+            net_l = tflearn.fully_connected(inputs, 50, weights_init=w_init)
+            net_l = tflearn.layers.normalization.batch_normalization(net_l)
             net_l = tflearn.activations.relu(net_l)
             net_a = tflearn.fully_connected(actions, 50, weights_init=w_init)
-            #net_a = tflearn.layers.normalization.batch_normalization(net_a)
+            net_a = tflearn.fully_connected(net_a, 50, weights_init=w_init)
+            net_a = tflearn.layers.normalization.batch_normalization(net_a)
             net_a = tflearn.activations.relu(net_a)
 
             net = tflearn.layers.merge_ops.merge([net_l, net_a], mode='concat')
-            net = tflearn.fully_connected(net, 150, weights_init=w_init)
-            net = tflearn.activations.relu(net)
+            #net = tflearn.fully_connected(net, 150, weights_init=w_init)
+            #net = tflearn.activations.relu(net)
             net = tflearn.fully_connected(net, 100, weights_init=w_init)
             net = tflearn.activations.relu(net)
 
@@ -176,14 +175,10 @@ class DDPG(object):
         with tf.variable_scope(namescope):
 
             states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32)
-            net = tflearn.fully_connected(inputs, 200, weights_init=w_init)
+            net = tflearn.fully_connected(inputs, 50, weights_init=w_init)
             #net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
-            net = tflearn.fully_connected(net, 100, weights_init=w_init)
-            #net = tflearn.layers.normalization.batch_normalization(net)
-            net = tflearn.activations.relu(net)
-            net = tflearn.fully_connected(net, 80, weights_init=w_init)
-            #net = tflearn.layers.normalization.batch_normalization(net)
+            net = tflearn.fully_connected(net, 40, weights_init=w_init)
             net = tflearn.activations.relu(net)
             out = tflearn.fully_connected(net, self.action_dim, weights_init=w_init)
             if self.use_softmax:

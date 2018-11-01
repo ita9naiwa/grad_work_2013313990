@@ -71,10 +71,8 @@ class model(object):
     def train(self, states, actions, values):
         s, a, adv = states, actions, values
         self.sess.run(self.update_old_op)
-        losses = []
         for _ in range(self.update_step):
             loss = self.sess.run([self.loss, self.train_op],
                 feed_dict={self.states: s, self.actions: a, self.advantages: adv})[0]
-            losses.append(loss)
-        print("temporal loss: %0.2f" % np.mean(losses))
-        return losses
+        print("temporal loss: %0.2f" % loss)
+        return loss

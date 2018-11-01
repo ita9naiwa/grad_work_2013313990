@@ -61,7 +61,7 @@ class model(object):
 
     def train(self, states, actions, values):
         [self.loss, self.optimizer]
-        ret =  self.sess.run([self.indices, self.optimizer],
+        ret =  self.sess.run([self.loss, self.optimizer],
                 feed_dict={
                     self.state_holder: states,
                     self.actions_holder: actions,

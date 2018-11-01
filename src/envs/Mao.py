@@ -16,10 +16,11 @@ from gym.utils import seeding
 
 class ClusteringEnv():
     metadata = {'render.modes': ['human']}
-    def __init__(self, max_episode_size=200, observation_mode='image',
+    def __init__(self, episode_size=1000, force_stop=2000, observation_mode='image',
                 n_resource_slot_capacities=(10, 10), p_job_arrival=0.3, max_job_length=15,
                 num_slots=5, backlog_size=60, discount=1.0, time_horizon=20):
-        self.max_episode_size = max_episode_size
+        self.episode_size = episode_size
+        self.force_stop = min(force_stop, 2* self.episode_size)
         self.observation_mode = observation_mode
         self.repre = 'image'
         self.backlog_size = backlog_size
@@ -30,7 +31,7 @@ class ClusteringEnv():
         self.time_horizon = max(time_horizon, max_job_length)
         self.n_resource_slot_capacities = n_resource_slot_capacities
         self.max_job_length = max_job_length
-        self.dist = dist(episode_max_size=self.max_episode_size, new_job_rate=p_job_arrival, job_len=max_job_length,
+        self.dist = dist(episode_max_size=self.episode_size, new_job_rate=p_job_arrival, job_len=max_job_length,
                 num_resources=self.n_resources, max_resource_usage=np.max(n_resource_slot_capacities))
         self.prev_timestep_proceeded = False
         self.seq_num = 0
@@ -39,7 +40,7 @@ class ClusteringEnv():
 
         self.state_space = spaces.Discrete(self.num_slots)
         self.action_space = spaces.Discrete(self.num_slots + 1) # num # n_resources denotes do nothing.
-        self.scenario = self.dist.generate_work_sequence()
+        self.current_scenario = self.dist.generate_work_sequence()
 
     def render(self, mode='human'):
         """
@@ -114,7 +115,6 @@ class ClusteringEnv():
         pass
 
     def step(self, a):
-
         self.last_timestamp_timestep = self.current_timestep
         self.sync()
         # can't pick job or slot is full;
@@ -126,7 +126,6 @@ class ClusteringEnv():
             # if the model choose wrong action, then move
             if assigned is False:
                 self._handle_move()
-
         if self.last_timestamp_timestep != self.current_timestep:
             self._proceed()
 
@@ -138,15 +137,17 @@ class ClusteringEnv():
 
         return observation, reward, done, info
 
-    def reset(self, dist=None):
+    def reset(self, dist=None, reset_scenario=True):
         if self.renderer is not None:
             self.renderer.close()
 
         if dist is not None:
             self.dist = dist
 
+        if reset_scenario is True:
+            self.current_scenario = self.dist.generate_work_sequence()
+
         self.renderer = None
-        self.scenario = self.dist.generate_work_sequence()
         self.last_timestamp_timestep = 0
         self.current_timestep = 0
         self.current_timestamp = 0
@@ -156,11 +157,8 @@ class ClusteringEnv():
         self.extra_info = ExtraInfo()
         self.finished_job_durations = []
         self.finisihed_job_times_taken = []
-        self.machine = Machine(self.max_job_length,
-            self.n_resources, self.time_horizon, self.n_resource_slot_capacities)
+        self.machine = Machine(self.max_job_length, self.n_resources, self.time_horizon, self.n_resource_slot_capacities)
         self.last_job_activated_timestep = -1
-
-
         return self._observe()
 
 
@@ -258,11 +256,13 @@ class ClusteringEnv():
 
     def sync(self):
         # check there is new job coming
-        if (self.last_job_activated_timestep != self.current_timestep) and (self.max_episode_size > self.current_timestamp) and (self.scenario[self.current_timestep] is not None):
+        if self.episode_size <= self.current_timestep:
+            pass
+        elif (self.last_job_activated_timestep != self.current_timestep) and (self.episode_size > self.current_timestamp) and (self.current_scenario[self.current_timestep] is not None):
             #if there's an new job
             self.last_job_activated_timestep = self.current_timestep
-            size = self.scenario[self.current_timestep]['size']
-            duration = self.scenario[self.current_timestep]['duration']
+            size = self.current_scenario[self.current_timestep]['size']
+            duration = self.current_scenario[self.current_timestep]['duration']
             if duration != 0:
                 new_job = Job(size, duration, len(self.job_record.record), self.current_timestep)
                 self.job_backlog.append_job(new_job)
@@ -289,21 +289,23 @@ class ClusteringEnv():
     def _get_reward(self):
         reward = 0
 
-
+        """
         for job in self.machine.running_jobs:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
+        """
 
         for job in self.job_slot.slot:
             if job is None:
                 continue
-            reward += -1.0/ float(job.len)
-
+            reward += -1.0 / float(job.len)
+        """
         for job in self.job_backlog.backlog:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
+        """
         return reward
 
 
@@ -325,8 +327,9 @@ class ClusteringEnv():
 
 
     def _is_finished(self):
-        ret = self.max_episode_size <= self.current_timestep
-        ret &= self.job_slot.num_allocated_jobs() == 0
-        ret &= self.job_backlog.num_jobs() == 0
-        ret &= self.machine.get_num_unfinished_jobs() == 0
-        return ret
+        ret = self.force_stop <= self.current_timestamp
+        ret2 = self.current_timestep >= self.episode_size
+        ret2 &= self.job_slot.num_allocated_jobs() == 0
+        ret2 &= self.job_backlog.num_jobs() == 0
+        ret2 &= self.machine.get_num_unfinished_jobs() == 0
+        return ret | ret2
