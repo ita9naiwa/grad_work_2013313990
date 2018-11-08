@@ -111,12 +111,12 @@ def __main__():
                         ADV = np.hstack([ADV, adv])
                         A = np.hstack([A, list_a])
                     break
-            if ite >= 3:
-                loss = model.train(S, A, ADV)
-                #print(loss)
-                slowdown = get_avg_slowdown(info)
-                statement = "[episode %d], ep_l2n: %d slowdown %0.2f, loss : %0.2f" % (ite, _, slowdown, loss)
-                print(statement)
+
+        if ite >= 3:
+            loss = model.train(S, A, ADV)
+            #print(loss)
+            statement = "[episode %d] loss : %0.2f" % (ite, loss)
+            print(statement)
         sds = []
         rews = []
         for i_episode in range(30):
