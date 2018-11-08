@@ -10,15 +10,12 @@ from src.utils import *
 
 test_env = get_env("configs/env.json", None)
 sess = tf.Session()
-ob = env.reset()
-
-state_dim = 4
-action_dim = env.action_space.n
+ob = test_env.reset()
+state_dim = np.prod(ob.shape)
+action_dim = test_env.action_space.n
 episode_max_length = 500
 discount = 0.99
 batch_size = 20
-render = True
-buffer_size = 100000
 lr = 0.001
 seed = 1234
 num_train_seq = 50
@@ -28,7 +25,7 @@ aspace = np.arange(action_dim, dtype=int)
 class traj_worker():
     def __init__(self, model):
         self.model = model
-        self.env = get_env("config/env.json", 1541)
+        self.env = get_env("configs/env.json", 1541)
     def get_trajs(self, seq_no, batch_size):
         model = self.model
         env = self.env
@@ -36,14 +33,11 @@ class traj_worker():
         ep_buffer = []
         for cnt_now in range(batch_size):
             list_s, list_a, list_r, list_y = [], [], [], []
-            #s = env.reset(seq_no=seq_no)
-            s = env.reset()
-            #s = flatten(s)
+            s = env.reset(seq_no=seq_no)
             for ep_len in range(1000):
                 a = model.get_action_dist(s)
                 action = np.random.choice(aspace, p=a)
                 s2, r, done, info = env.step(action)
-                #s2 = flatten(s2)
                 list_s.append(s)
                 list_a.append(action)
                 list_r.append(r)
