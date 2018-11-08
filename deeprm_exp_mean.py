@@ -113,6 +113,9 @@ def __main__():
                     break
 
         if ite >= 3:
+            print(S.shape)
+            print(A.shape)
+            print(adv.shape)
             loss = model.train(S, A, ADV)
             #print(loss)
             statement = "[episode %d] loss : %0.2f" % (ite, loss)
