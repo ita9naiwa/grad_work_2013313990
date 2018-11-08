@@ -3,7 +3,10 @@ import tflearn
 import numpy as np
 
 class model(object):
-    def __init__(self, sess, state_dim, action_dim, learning_rate, network_widths=[300, 200, 30]):
+    def __init__(
+            self, sess, state_dim, action_dim, learning_rate,
+            network_widths=[300, 200, 30]):
+            #use_softmax=False):
         if sess != None:
             self.sess = sess
         else:
@@ -33,6 +36,7 @@ class model(object):
             net = tflearn.activations.relu(net)
 
         out = tflearn.fully_connected(net, self.action_dim)
+        #if use_softmax = False:
         out = tflearn.activations.softmax(out)
         parameters = tf.trainable_variables()
 

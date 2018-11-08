@@ -40,10 +40,12 @@ class dist:
         for i in range(self.num_resources):
             if i == dominant_resource:
                 work_size[i] = np.random.randint(
-                    self.dominant_resource_usage[0], self.dominant_resource_usage[1], dtype=np.int32)
+                    self.dominant_resource_usage[0],
+                    self.dominant_resource_usage[1], dtype=np.int32)
             else:
                 work_size[i] = np.random.randint(
-                    self.secondary_resource_usage[0], self.secondary_resource_usage[1], dtype=np.int32)
+                    self.secondary_resource_usage[0],
+                    self.secondary_resource_usage[1], dtype=np.int32)
         return work_length, work_size
 
     def no_jobs(self):
@@ -65,5 +67,3 @@ class dist:
 
     def generate_work_sequences_heap(self):
         pass
-
-pass

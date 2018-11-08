@@ -18,7 +18,7 @@ class ClusteringEnv():
     metadata = {'render.modes': ['human']}
     def __init__(self, episode_size=1000, force_stop=2000, observation_mode='image',
                 n_resource_slot_capacities=(10, 10), p_job_arrival=0.3, max_job_length=15,
-                num_slots=5, backlog_size=60, discount=1.0, time_horizon=20):
+                num_slots=5, backlog_size=60,time_horizon=20):
         self.episode_size = episode_size
         self.force_stop = min(force_stop, 2* self.episode_size)
         self.observation_mode = observation_mode
@@ -27,12 +27,11 @@ class ClusteringEnv():
         self.n_resources = len(n_resource_slot_capacities)
         self.p_job_arrival = p_job_arrival
         self.num_slots = num_slots
-        self.discount = discount
         self.time_horizon = max(time_horizon, max_job_length)
         self.n_resource_slot_capacities = n_resource_slot_capacities
         self.max_job_length = max_job_length
         self.dist = dist(episode_max_size=self.episode_size, new_job_rate=p_job_arrival, job_len=max_job_length,
-                num_resources=self.n_resources, max_resource_usage=np.max(n_resource_slot_capacities))
+                num_resources=self.n_resources, max_resource_usage=15)
         self.prev_timestep_proceeded = False
         self.seq_num = 0
         self.seq_idx = 0
@@ -40,7 +39,8 @@ class ClusteringEnv():
 
         self.state_space = spaces.Discrete(self.num_slots)
         self.action_space = spaces.Discrete(self.num_slots + 1) # num # n_resources denotes do nothing.
-        self.current_scenario = self.dist.generate_work_sequence()
+        self.scenarios = [self.dist.generate_work_sequence() for _ in range(100)]
+        self.current_scenario = None
 
     def render(self, mode='human'):
         """
@@ -118,6 +118,7 @@ class ClusteringEnv():
         self.last_timestamp_timestep = self.current_timestep
         self.sync()
         # can't pick job or slot is full;
+        proceed = True
         if (a == self.num_slots) or (self.job_slot[a] is None):
             self._handle_move()
         # pick job `a` and do
@@ -126,26 +127,28 @@ class ClusteringEnv():
             # if the model choose wrong action, then move
             if assigned is False:
                 self._handle_move()
+            else:
+                proceed = False
         if self.last_timestamp_timestep != self.current_timestep:
             self._proceed()
 
         self.current_timestamp += 1
         done = self._is_finished()
         observation = self._observe()
-        reward = self._get_reward()
+        reward = self._get_reward(proceed)
         info = self.job_record.record
 
         return observation, reward, done, info
 
-    def reset(self, dist=None, reset_scenario=True):
+    def reset(self, dist=None, seq_no=0):
         if self.renderer is not None:
             self.renderer.close()
 
         if dist is not None:
             self.dist = dist
 
-        if reset_scenario is True:
-            self.current_scenario = self.dist.generate_work_sequence()
+        if seq_no >= 0:
+            self.current_scenario = self.scenarios[seq_no]
 
         self.renderer = None
         self.last_timestamp_timestep = 0
@@ -171,7 +174,7 @@ class ClusteringEnv():
         np.random.seed(seed)
         pass
 
-    def _observe(self):
+    def _observe(self, ob_as_dict=False):
 
         machine_repr = self.machine.repr()
         job_slot_repr = self.job_slot.repr()
@@ -184,7 +187,8 @@ class ClusteringEnv():
             "job_backlog": job_backlog_repr,
             "extra_info": extra_info
         }
-
+        if ob_as_dict is True:
+            return observation
         if self.observation_mode == 'image':
             return self.observation_to_2d_repr(observation)
         else:
@@ -286,8 +290,10 @@ class ClusteringEnv():
             job = self.job_backlog.get_job()
             self.job_slot.assign(job)
 
-    def _get_reward(self):
+    def _get_reward(self, proceed):
         reward = 0
+        if proceed is False:
+            return 0
 
         """
         for job in self.machine.running_jobs:
@@ -296,10 +302,12 @@ class ClusteringEnv():
             reward += -1.0 / float(job.len)
         """
 
+
         for job in self.job_slot.slot:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
+
         """
         for job in self.job_backlog.backlog:
             if job is None:

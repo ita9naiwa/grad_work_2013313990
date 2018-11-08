@@ -1,66 +1,39 @@
+from time import sleep
+import json
+from time import sleep
 import gym
 import numpy as np
-import src.envs.Mao as mao
-from time import sleep
-from src.utils import get_avg_slowdown
+from src.utils import (
+    get_env, get_avg_slowdown, get_sjf_action,
+    get_possible_actions)
 
-def get_sjf_action(observation):
-    machine = observation['machine']
-    job_slot = observation['job_slot']
-    sjf_score = 0
-    durations = job_slot['lengths']
-    resource_vectors = job_slot['resource_vectors']
-    enter_time = job_slot['enter_times']
-    num_slots  = len(durations)
 
-    time_horizon = machine.shape[0]
+with open("configs/env.json", 'r') as f:
+    config = json.load(f)
 
-    ret = num_slots
-    candidates = []
-    for j in range(num_slots):
-        if durations[j] is None:
-            continue
-        for i in range(time_horizon):
-            if i + durations[j] >= time_horizon:
-                break
-            r = machine[i:i + durations[j]] - resource_vectors[j]
-            q = np.all(r >= 0)
-            if q:
-                candidates.append((durations[j], enter_time[j], j))
-    candidates = sorted(candidates)
-    if len(candidates) > 0:
-        return candidates[0][2]
-    else:
-        return ret
-
-def get_entropy(vec):
-    entropy = -np.sum(vec * np.log(vec))
-    if np.isnan(entropy):
-        return 0
-    return entropy
-
-max_ep_size = 100
-env = mao.ClusteringEnv(p_job_arrival=0.7, observation_mode='def',
-        episode_size=50, force_stop=100, num_slots=5,
-        n_resource_slot_capacities=(20, 20))
-np.random.seed(1)
+env = get_env("configs/env.json")
 
 sds = []
-for i_episode in range(10):
-    observation = env.reset()
-    for t in range(1000):
+for i_episode in range(30):
+    observation = env.reset(seq_no=i_episode)
+    for t in range(config['ep_force_stop']):
         #env.render()
-        action = get_sjf_action(observation)
+        p = get_possible_actions(env)
+        #print(p)
+        action = get_sjf_action(env)
         observation, reward, done, info = env.step(action)
         #print(info)
         #sleep(0.1)
         if done:
             break
+        #sleep(0.5)
     slowdown = get_avg_slowdown(info)
-    print(slowdown)
-
+    #print(slowdown)
     sds.append(slowdown)
 
+with open("configs/test_env.pkl", "wb") as f:
+    import pickle
+    pickle.dump(env, f)
 print(np.mean(sds))
 
 #        if done:

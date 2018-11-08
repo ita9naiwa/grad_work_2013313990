@@ -1,5 +1,5 @@
 from tqdm import tqdm
-import src.models.ddpg as ddpg
+import src.models.REINFORCE as rl
 from src.models.buffer import ReplayBuffer
 from src.noise import OrnsteinUhlenbeckActionNoise
 from src.summary import summary
@@ -12,9 +12,9 @@ from src.utils import *
 
 np.random.seed(1)
 episode_max_length = 100
-num_slots = 10
+num_slots = 5
 max_ep_size = 400
-env = mao.ClusteringEnv(p_job_arrival=0.5, observation_mode='image',
+env = mao.ClusteringEnv(p_job_arrival=0.6, observation_mode='image',
         episode_size=episode_max_length, force_stop=max_ep_size, num_slots=num_slots,
         n_resource_slot_capacities=(10, 10))
 sess = tf.Session()
@@ -23,14 +23,13 @@ state_dim = np.prod(ob.shape)
 action_dim = env.action_space.n
 discount = 0.9
 batch_size = 8
-num_episodes = 1000
+num_episodes = 10000
 render = True
-buffer_size = 1000
-actor_lr = 1e-5
-critic_lr = 1e-4
-tau = 0.001
+buffer_size = 2000
+lr = 0.001
 seed = 1234
-model = ddpg.DDPG(sess, action_dim, state_dim, actor_lr, critic_lr, tau=tau, use_softmax=False)
+batch_size = 16
+model = rl.model(sess, state_dim, action_dim, lr, network_widths=[200, 30])
 
 def get_impossible_actions(observation):
     machine = observation['machine']
@@ -101,8 +100,9 @@ def __main__():
     sess.run(tf.initializers.global_variables())
     replay_buffer = ReplayBuffer(buffer_size)
     moving_mean = np.zeros(shape=(100, max_ep_size))
+    sd_prev = np.ones(50)
     for current_ep in range(num_episodes):
-        seq_no = np.random.randint(0, 100)
+        seq_no = np.random.randint(0, 50)
         s = env.reset(seq_no=seq_no)
         s = flatten(s)
         ep_reward = 0
@@ -111,7 +111,8 @@ def __main__():
         episode_buffer = np.empty((0, 5), float)
         reward = Reward(0.1, discount)
 
-        for ep_len in tqdm(range(max_ep_size)):
+        #for ep_len in tqdm(range(max_ep_size)):
+        for ep_len in range(max_ep_size):
             a = model.get_action_dist(s)
             ob_dict = env._observe(ob_as_dict=True)
             impossible_actions = get_impossible_actions(ob_dict)
@@ -125,35 +126,35 @@ def __main__():
             s2 = flatten(s2)
 
             ep_reward += r
-            #episode_buffer = np.append(episode_buffer, [[s, a, r, done, s2]], axis=0)
-            replay_buffer.add(s, a, (r - moving_mean[seq_no][ep_len]), done, s2)
+            episode_buffer = np.append(episode_buffer, [[s, action, r, done, s2]], axis=0)
+            #replay_buffer.add(s, action, (r - moving_mean[seq_no][ep_len]), done, s2)
             if moving_mean[seq_no][ep_len] == 0:
                 moving_mean[seq_no][ep_len] = r
             else:
                 moving_mean[seq_no][ep_len] = moving_mean[seq_no][ep_len] * 0.9 + r * 0.1
             #print(done)
-            if replay_buffer.size() >= batch_size:
-                minibatch = replay_buffer.sample_batch(batch_size)
-                pred = model.train(minibatch)
-                ep_ave_max_q += np.amax(pred)
             if done:
                 #episode_buffer = reward.discount(episode_buffer)
                 #for step in episode_buffer:
                 #    replay_buffer.add(step[0], step[1], step[2], step[3], step[4])
                 break
             s = s2
-        """
+
         for i, step in enumerate(episode_buffer):
-            if moving_mean[i] == 0:
-                moving_mean[i] = step[2]
-            replay_buffer.add(step[0], step[1], step[2] - moving_mean[i], step[3], step[4])
-            moving_mean[i] = step[2] * 0.1 + 0.9* moving_mean[i]
-        """
+            if moving_mean[seq_no][i] == 0:
+                moving_mean[seq_no][i] = step[2]
+
+            replay_buffer.add(step[0], step[1], step[2] - moving_mean[seq_no][i], step[3], step[4])
+            moving_mean[seq_no][i] = step[2] * 0.1 + 0.9* moving_mean[seq_no][i]
+        minibatch = replay_buffer.sample_batch(batch_size)
+        pred = model.train(minibatch[0], minibatch[1], minibatch[2])
+        replay_buffer.clear()
 
 
         slowdown = get_avg_slowdown(info)
         print(chosen_actions)
-        print("[episode %d] average episode length : %d" % (current_ep, ep_len), "episode reward : %f, Slowdown: %0.2f" % (ep_reward, slowdown))
+        print("[episode %d] average episode length : %d" % (current_ep, ep_len), "episode reward : %f, Slowdown: %0.2f" % (ep_reward, slowdown), "rew_prev : %0.2f , rew_now : %0.2f, dec : %0.2f" % (sd_prev[seq_no], ep_reward, ep_reward / sd_prev[seq_no]))
+        sd_prev[seq_no] = ep_reward
 
 if __name__ == "__main__":
     __main__()
