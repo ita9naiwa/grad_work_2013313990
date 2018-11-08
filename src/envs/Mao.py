@@ -23,7 +23,7 @@ class ClusteringEnv():
                 n_resource_slot_capacities=(10, 10), p_job_arrival=0.3, max_job_length=15,
                 num_slots=5, backlog_size=60,time_horizon=20):
         self.episode_size = episode_size
-        self.force_stop = min(force_stop, 2* self.episode_size)
+        self.force_stop = max(force_stop, 2* self.episode_size)
         self.observation_mode = observation_mode
         self.repre = 'image'
         self.backlog_size = backlog_size
@@ -305,7 +305,6 @@ class ClusteringEnv():
             reward += -1.0 / float(job.len)
         """
 
-
         for job in self.job_slot.slot:
             if job is None:
                 continue
@@ -317,6 +316,7 @@ class ClusteringEnv():
                 continue
             reward += -1.0 / float(job.len)
         """
+
         return reward
 
 

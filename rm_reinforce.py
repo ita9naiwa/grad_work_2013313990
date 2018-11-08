@@ -18,8 +18,7 @@ discount = 0.99
 batch_size = 20
 lr = 0.001
 seed = 1234
-num_train_seq = 50
-batch_size = 50
+num_train_seq = 5
 aspace = np.arange(action_dim, dtype=int)
 
 class traj_worker():
@@ -85,20 +84,32 @@ def __main__():
             loss = model.train(S, A, ADV)
             s = test_env.reset()
             ep_lengths = []
+            rewards = []
+            print(loss)
 
             for i in range(10):
-                s = test_env.reset()
+                rew = 0
+                test_env.reset(seq_no=i)
+                s = test_env._observe()
                 for ep_len in range(episode_max_length):
                     a = model.get_action_dist(s)
+                    possible_actions = get_possible_actions(test_env)
+                    p = np.zeros_like(aspace)
+                    p[possible_actions] = 1
+                    p[-1] = 1
+                    a = a * p
                     #action = np.random.choice(aspace, p=a)
                     action = np.argmax(a)
                     s2, r, done, info = test_env.step(action)
+                    rew += r
                     if done:
                         break
                     s = s2
+                print(ep_len)
                 ep_lengths.append(ep_len)
-            print(loss)
-            print("[iter %d] avg episode length : %d" % (iter, np.mean(ep_lengths)))
+                rewards.append(rew)
+
+            print("[iter %d] avg episode length : %0.1f avg total rewards : %0.2f" % (iter, np.mean(ep_lengths), np.mean(rewards)))
 
 if __name__ == "__main__":
     __main__()
