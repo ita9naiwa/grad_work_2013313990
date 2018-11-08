@@ -21,6 +21,7 @@ seed = 1234
 num_train_seq = 50
 aspace = np.arange(action_dim, dtype=int)
 
+model = rl.model(sess, state_dim, action_dim, lr, network_widths=[20])
 class traj_worker():
     def __init__(self, model):
         self.model = model
@@ -61,8 +62,6 @@ class traj_worker():
         return S, A, ADV
 
 def __main__():
-    model = rl.model(sess, state_dim, action_dim, lr,
-                network_widths=[50, 40])
     sess.run(tf.initializers.global_variables())
     trajWorkers = [traj_worker(model) for _ in range(num_train_seq)]
     with ThreadPoolExecutor(max_workers=4) as exec:
@@ -105,7 +104,6 @@ def __main__():
                     if done:
                         break
                     s = s2
-                print(ep_len)
                 ep_lengths.append(ep_len)
                 rewards.append(rew)
 
