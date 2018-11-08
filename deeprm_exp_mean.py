@@ -115,10 +115,12 @@ def __main__():
                 statement = "[episode %d], ep_l2n: %d slowdown %0.2f, loss : %0.2f" % (ite, _, slowdown, loss)
                 print(statement)
         sds = []
+        rews = []
         for i_episode in range(30):
             test_env.reset(seq_no=i_episode)
             s = test_env._observe()
             s = flatten(s)
+            rew = 0.0
             for t in range(force_stop):
                 a = model.get_action_dist(s)
                 possible_actions = get_possible_actions(test_env)
@@ -127,14 +129,17 @@ def __main__():
                 p[-1] = 1
                 a = a * p
                 a /= np.sum(a)
+
                 action = np.random.choice(aspace, p=a)
                 s, reward, done, info = test_env.step(action)
+                rew += reward
                 s =  flatten(s)
                 if done:
                     break
             slowdown = get_avg_slowdown(info)
             sds.append(slowdown)
-        print("test slowdown mean : %0.2f" % np.mean(sds))
+            rews.append(rew)
+        print("test slowdown mean : %0.2f, avg rew : %0.2f" % (np.mean(sds), np.mean(rew)))
 
 
 
