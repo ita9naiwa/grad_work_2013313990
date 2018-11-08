@@ -66,7 +66,10 @@ def __main__():
     sess.run(tf.initializers.global_variables())
     reward = Reward(1.0, discount)
     baseline = np.zeros(shape=(n_seqs, force_stop), dtype=float)
+
+
     for ite in range(iter):
+        S, ADV, A = np.empty(shape=(0, state_dim)), np.empty(shape=(0,)), np.empty(shape=(0,))
         for seq_no in range(n_seqs):
             env.reset(seq_no=seq_no)
             s = env._observe()
@@ -102,14 +105,14 @@ def __main__():
                     else:
                         baseline[seq_no][:len(list_y)] = (
                                 baseline[seq_no][:len(list_y)] * 0.9 + list_y * 0.1)
+                    if ite >= 3:
+                        adv = list_y - baseline[seq_no][:len(list_y)]
+                        S = np.vstack([S, list_s])
+                        ADV = np.hstack([ADV, adv])
+                        A = np.hstack([A, list_a])
                     break
-
             if ite >= 3:
-                s = list_s
-                a = list_a
-                adv = list_y - baseline[seq_no][:len(list_y)]
-                #print(adv)
-                loss = model.train(s, a, adv)
+                loss = model.train(S, A, ADV)
                 #print(loss)
                 slowdown = get_avg_slowdown(info)
                 statement = "[episode %d], ep_l2n: %d slowdown %0.2f, loss : %0.2f" % (ite, _, slowdown, loss)
