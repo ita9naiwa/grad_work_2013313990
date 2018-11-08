@@ -18,7 +18,7 @@ discount = 0.99
 batch_size = 20
 lr = 0.001
 seed = 1234
-num_train_seq = 5
+num_train_seq = 50
 aspace = np.arange(action_dim, dtype=int)
 
 class traj_worker():
@@ -64,7 +64,7 @@ def __main__():
     model = rl.model(sess, state_dim, action_dim, lr,
                 network_widths=[50, 40])
     sess.run(tf.initializers.global_variables())
-    trajWorkers = [traj_worker(model) for _  in range(num_train_seq)]
+    trajWorkers = [traj_worker(model) for _ in range(num_train_seq)]
     with ThreadPoolExecutor(max_workers=4) as exec:
 
         for iter in range(1000):
