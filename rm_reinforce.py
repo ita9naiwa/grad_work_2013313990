@@ -1,16 +1,14 @@
-import test_base
 import copy
 import src.models.REINFORCE as rl
-from src.models.buffer import ReplayBuffer
-from src.noise import OrnsteinUhlenbeckActionNoise
 from concurrent.futures import ThreadPoolExecutor
 import concurrent.futures
 import numpy as np
 import tensorflow as tf
 import gym
 import scipy.signal
+from utils import *
 
-env = gym.make('CartPole-v1')
+test_env = get_env("configs/env.json", None)
 sess = tf.Session()
 ob = env.reset()
 
@@ -23,13 +21,14 @@ render = True
 buffer_size = 100000
 lr = 0.001
 seed = 1234
+num_train_seq = 50
+batch_size = 50
 aspace = np.arange(action_dim, dtype=int)
 
 class traj_worker():
-    def __init__(self, model, env):
+    def __init__(self, model):
         self.model = model
-        self.env = gym.make('CartPole-v1')
-
+        self.env = get_env("config/env.json", 1541)
     def get_trajs(self, seq_no, batch_size):
         model = self.model
         env = self.env
@@ -72,15 +71,14 @@ def __main__():
     model = rl.model(sess, state_dim, action_dim, lr,
                 network_widths=[50, 40])
     sess.run(tf.initializers.global_variables())
-    trajWorkers = [traj_worker(model, copy.copy(env)) for _  in range(10)]
+    trajWorkers = [traj_worker(model) for _  in range(num_train_seq)]
     with ThreadPoolExecutor(max_workers=4) as exec:
 
         for iter in range(1000):
-
             futures = []
             S, ADV = np.empty(shape=(0, state_dim)), np.empty(shape=(0,))
             A = np.empty(shape=(0,), dtype=int)
-            for seq_no in range(10):
+            for seq_no in range(num_train_seq):
                 future = exec.submit(trajWorkers[seq_no].get_trajs, seq_no, batch_size)
                 futures.append(future)
 
@@ -91,16 +89,16 @@ def __main__():
                 ADV = np.hstack([ADV, adv])
 
             loss = model.train(S, A, ADV)
-            s = env.reset()
+            s = test_env.reset()
             ep_lengths = []
 
             for i in range(10):
-                s = env.reset()
+                s = test_env.reset()
                 for ep_len in range(episode_max_length):
                     a = model.get_action_dist(s)
                     #action = np.random.choice(aspace, p=a)
                     action = np.argmax(a)
-                    s2, r, done, info = env.step(action)
+                    s2, r, done, info = test_env.step(action)
                     if done:
                         break
                     s = s2

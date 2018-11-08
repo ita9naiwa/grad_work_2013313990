@@ -1,6 +1,8 @@
 import test_base
 import copy
 import src.models.REINFORCE as rl
+import src.models.REINFORCE_PPO as reinforce_pro
+
 from src.models.buffer import ReplayBuffer
 from src.noise import OrnsteinUhlenbeckActionNoise
 from concurrent.futures import ThreadPoolExecutor
@@ -19,9 +21,10 @@ action_dim = env.action_space.n
 episode_max_length = 500
 discount = 0.99
 batch_size = 20
+num_job_sets = 1000
 render = True
 buffer_size = 100000
-lr = 0.001
+lr = 0.0001
 seed = 1234
 aspace = np.arange(action_dim, dtype=int)
 
@@ -30,12 +33,12 @@ class traj_worker():
         self.model = model
         self.env = gym.make('CartPole-v1')
 
-    def get_trajs(self, seq_no, batch_size):
+    def get_trajs(self, seq_no, batch_cnt):
         model = self.model
         env = self.env
-        baseline = np.zeros(shape=(batch_size, 1000))
+        baseline = np.zeros(shape=(batch_cnt, 1000))
         ep_buffer = []
-        for cnt_now in range(batch_size):
+        for cnt_now in range(batch_cnt):
             list_s, list_a, list_r, list_y = [], [], [], []
             #s = env.reset(seq_no=seq_no)
             s = env.reset()
@@ -69,8 +72,8 @@ class traj_worker():
         return S, A, ADV
 
 def __main__():
-    model = rl.model(sess, state_dim, action_dim, lr,
-                network_widths=[50, 40])
+    model = reinforce_pro.model(sess, state_dim, action_dim, lr,
+                network_widths=[50, 40], update_step=15)
     sess.run(tf.initializers.global_variables())
     trajWorkers = [traj_worker(model, copy.copy(env)) for _  in range(10)]
     with ThreadPoolExecutor(max_workers=4) as exec:
@@ -81,7 +84,7 @@ def __main__():
             S, ADV = np.empty(shape=(0, state_dim)), np.empty(shape=(0,))
             A = np.empty(shape=(0,), dtype=int)
             for seq_no in range(10):
-                future = exec.submit(trajWorkers[seq_no].get_trajs, seq_no, batch_size)
+                future = exec.submit(trajWorkers[seq_no].get_trajs, seq_no, 10)
                 futures.append(future)
 
             for future in concurrent.futures.as_completed(futures):

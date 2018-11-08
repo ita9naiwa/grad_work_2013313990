@@ -11,7 +11,7 @@ env = train_env = get_env("configs/env.json", 1541)
 test_env = get_env("configs/env.json", None)
 
 sess = tf.Session()
-n_seqs = 50
+n_seqs = 5
 iter = 1000
 force_stop = 400
 ob = env.reset()
@@ -100,11 +100,11 @@ def __main__():
                         y_i = np.sum(disc_vec[i:]) / (discount ** i)
                         list_y.append(y_i)
                     list_y = np.array(list_y)
+
                     if i == 0:
-                        baseline[seq_no][ep][:len(list_y)] += list_y
+                        baseline[seq_no][:len(list_y)] += list_y
                     else:
-                        baseline[seq_no][:len(list_y)] = (
-                                baseline[seq_no][:len(list_y)] * 0.9 + list_y * 0.1)
+                        baseline[seq_no][:len(list_y)] = (baseline[seq_no][:len(list_y)] * 0.9 + list_y * 0.1)
                     if ite >= 3:
                         adv = list_y - baseline[seq_no][:len(list_y)]
                         S = np.vstack([S, list_s])
@@ -115,7 +115,7 @@ def __main__():
         if ite >= 3:
             print(S.shape)
             print(A.shape)
-            print(adv.shape)
+            print(ADV.shape)
             loss = model.train(S, A, ADV)
             #print(loss)
             statement = "[episode %d] loss : %0.2f" % (ite, loss)

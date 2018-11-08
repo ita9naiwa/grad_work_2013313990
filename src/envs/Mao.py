@@ -13,6 +13,9 @@ from gym import spaces
 from gym import utils
 from gym.utils import seeding
 
+def flatten(m):
+    state_dim = np.prod(m.shape)
+    return np.reshape(m, newshape=(state_dim,))
 
 class ClusteringEnv():
     metadata = {'render.modes': ['human']}
@@ -190,7 +193,7 @@ class ClusteringEnv():
         if ob_as_dict is True:
             return observation
         if self.observation_mode == 'image':
-            return self.observation_to_2d_repr(observation)
+            return flatten(self.observation_to_2d_repr(observation))
         else:
             return observation
 
