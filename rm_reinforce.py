@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 import gym
 import scipy.signal
-from utils import *
+from src.utils import *
 
 test_env = get_env("configs/env.json", None)
 sess = tf.Session()
