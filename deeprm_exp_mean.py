@@ -114,7 +114,7 @@ def __main__():
                 slowdown = get_avg_slowdown(info)
                 statement = "[episode %d], ep_l2n: %d slowdown %0.2f, loss : %0.2f" % (ite, _, slowdown, loss)
                 print(statement)
-                sds = []
+        sds = []
         for i_episode in range(30):
             test_env.reset(seq_no=i_episode)
             s = test_env._observe()
