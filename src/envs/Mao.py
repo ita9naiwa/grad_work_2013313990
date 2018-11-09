@@ -298,24 +298,20 @@ class ClusteringEnv():
         if proceed is False:
             return 0
 
-        """
         for job in self.machine.running_jobs:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
-        """
 
         for job in self.job_slot.slot:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
 
-        """
         for job in self.job_backlog.backlog:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
-        """
 
         return reward
 

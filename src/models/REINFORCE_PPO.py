@@ -74,5 +74,4 @@ class model(object):
         for _ in range(self.update_step):
             loss = self.sess.run([self.loss, self.train_op],
                 feed_dict={self.states: s, self.actions: a, self.advantages: adv})[0]
-        print("temporal loss: %0.2f" % loss)
         return loss

@@ -18,8 +18,8 @@ class dist:
         self.job_max = job_len
         self.p_small_job = p_small_job
 
-        self.job_max_large = (10, 15 + 1)
-        self.job_max_small = (1, 3 + 1)
+        self.job_max_large = ((job_len//3)*2, job_len + 1)
+        self.job_max_small = (1, (job_len//5) + 1)
 
         self.dominant_resource_usage = (max_resource_usage //2, max_resource_usage + 1)
         self.secondary_resource_usage = (1, max_resource_usage // 5 + 1)

@@ -24,7 +24,7 @@ class model(object):
     def _create_network(self):
         #is it automatically flattend?
         #otherwise, manually flat inputs
-        w_init = tflearn.initializations.xavier()
+        w_init = tflearn.initializations.normal(mean=0.0, stddev=0.01)
         b_init = tflearn.initializations.zeros()
         states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
         net = tflearn.fully_connected(inputs, self.network_widths[0], weights_init=w_init, bias_init=b_init)
@@ -32,7 +32,7 @@ class model(object):
         net = tflearn.activations.relu(net)
         for network_width in self.network_widths[1:]:
             net = tflearn.fully_connected(net, network_width, weights_init=w_init)
-            net = tflearn.layers.normalization.batch_normalization(net)
+            #net = tflearn.layers.normalization.batch_normalization(net)
             net = tflearn.activations.relu(net)
 
         out = tflearn.fully_connected(net, self.action_dim)
@@ -64,7 +64,6 @@ class model(object):
                 feed_dict={self.state_holder: states})
 
     def train(self, states, actions, values):
-        [self.loss, self.optimizer]
         ret = self.sess.run([self.loss, self.optimizer],
                 feed_dict={
                     self.state_holder: states,
