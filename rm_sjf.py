@@ -14,7 +14,7 @@ with open("configs/env.json", 'r') as f:
 env = get_env("configs/env.json")
 
 sds = []
-for i_episode in range(30):
+for i_episode in range(10):
     observation = env.reset(seq_no=i_episode)
     for t in range(config['ep_force_stop']):
         #env.render()
@@ -33,7 +33,7 @@ for i_episode in range(30):
 
 with open("configs/test_env.pkl", "wb") as f:
     import pickle
-    pickle.dump(env, f)
+    #pickle.dump(env, f)
 print(np.mean(sds))
 
 #        if done:

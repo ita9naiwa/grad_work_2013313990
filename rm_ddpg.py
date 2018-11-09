@@ -13,19 +13,18 @@ from src.utils import *
 np.random.seed(1)
 episode_max_length = 100
 num_slots = 10
-max_ep_size = 400
-env = mao.ClusteringEnv(p_job_arrival=0.5, observation_mode='image',
-        episode_size=episode_max_length, force_stop=max_ep_size, num_slots=num_slots,
-        n_resource_slot_capacities=(10, 10))
+force_stop = 200
+env = get_env("configs/env.json", 1541)
+test_env = get_env("configs/env.json", None)
 sess = tf.Session()
 ob = env.reset()
 state_dim = np.prod(ob.shape)
 action_dim = env.action_space.n
 discount = 0.9
-batch_size = 8
+batch_size = 4
 num_episodes = 1000
 render = True
-buffer_size = 1000
+buffer_size = 3000
 actor_lr = 1e-5
 critic_lr = 1e-4
 tau = 0.001
@@ -97,63 +96,66 @@ class Reward(object):
 
 
 def __main__():
-
+    FILTER_OUTPUT = True
     sess.run(tf.initializers.global_variables())
-    replay_buffer = ReplayBuffer(buffer_size)
-    moving_mean = np.zeros(shape=(100, max_ep_size))
-    for current_ep in range(num_episodes):
-        seq_no = np.random.randint(0, 100)
-        s = env.reset(seq_no=seq_no)
-        s = flatten(s)
-        ep_reward = 0
-        ep_ave_max_q = 0
-        ep_len = 0
-        episode_buffer = np.empty((0, 5), float)
-        reward = Reward(0.1, discount)
+    for ite in range(1000):
+        replay_buffer = ReplayBuffer(buffer_size)
+        seq_list = np.arange(50)
+        np.random.shuffle(seq_list)
+        seq_list = seq_list.tolist()
+        for seq_no in tqdm(seq_list):
+            s = env.reset(seq_no=seq_no)
+            ep_reward = 0
+            ep_ave_max_q = 0
+            ep_len = 0
 
-        for ep_len in tqdm(range(max_ep_size)):
-            a = model.get_action_dist(s)
-            ob_dict = env._observe(ob_as_dict=True)
-            impossible_actions = get_impossible_actions(ob_dict)
-            a[impossible_actions] = -np.inf
-            a = np.exp(a)
-            a /= np.sum(a)
-            #print(a)
-            action = np.random.choice(aspace, p=a)
-            chosen_actions[action] += 1
-            s2, r, done, info = env.step(action)
-            s2 = flatten(s2)
+            for ep_len in range(force_stop):
+                a = model.get_action_dist(s)
+                ob_dict = env._observe(ob_as_dict=True)
+                impossible_actions = get_impossible_actions(ob_dict)
+                a[impossible_actions] = -np.inf
+                a = np.exp(a)
+                a /= np.sum(a)
+                #print(a)
+                action = np.random.choice(aspace, p=a)
+                chosen_actions[action] += 1
+                s2, r, done, info = env.step(action)
+                ep_reward += r
+                replay_buffer.add(s, a, r, done, s2)
+                if replay_buffer.size() >= batch_size:
+                    minibatch = replay_buffer.sample_batch(batch_size)
+                    pred = model.train(minibatch)
+                    ep_ave_max_q += np.amax(pred)
+                if done:
+                    break
+                s = s2
+        rewards, ep_lengths, slowdowns = [], [], []
+        for i in range(10):
+            rew = 0
+            test_env.reset(seq_no=i)
+            s = test_env._observe()
+            for ep_len in range(episode_max_length):
+                a = model.get_action_dist(s)
+                if FILTER_OUTPUT:
+                    ob_dict = test_env._observe(ob_as_dict=True)
+                    impossible_actions = get_impossible_actions(ob_dict)
+                    a[impossible_actions] = -np.inf
+                a = np.exp(a)
+                a /= np.sum(a)
+                #print(a)
+                action = np.random.choice(aspace, p=a)
+                #action = np.argmax(a)
+                s2, r, done, info = test_env.step(action)
+                rew += r
+                if done:
+                    break
+                s = s2
+            ep_lengths.append(ep_len)
+            rewards.append(rew)
+            slowdowns.append(get_avg_slowdown(info))
+        print("[iter %d] avg episode length : %0.1f avg total rewards : %0.2f avg slowdowns: %0.2f" %
+            (ite, np.mean(ep_lengths), np.mean(rewards), np.mean(slowdowns)))
 
-            ep_reward += r
-            #episode_buffer = np.append(episode_buffer, [[s, a, r, done, s2]], axis=0)
-            replay_buffer.add(s, a, (r - moving_mean[seq_no][ep_len]), done, s2)
-            if moving_mean[seq_no][ep_len] == 0:
-                moving_mean[seq_no][ep_len] = r
-            else:
-                moving_mean[seq_no][ep_len] = moving_mean[seq_no][ep_len] * 0.9 + r * 0.1
-            #print(done)
-            if replay_buffer.size() >= batch_size:
-                minibatch = replay_buffer.sample_batch(batch_size)
-                pred = model.train(minibatch)
-                ep_ave_max_q += np.amax(pred)
-            if done:
-                #episode_buffer = reward.discount(episode_buffer)
-                #for step in episode_buffer:
-                #    replay_buffer.add(step[0], step[1], step[2], step[3], step[4])
-                break
-            s = s2
-        """
-        for i, step in enumerate(episode_buffer):
-            if moving_mean[i] == 0:
-                moving_mean[i] = step[2]
-            replay_buffer.add(step[0], step[1], step[2] - moving_mean[i], step[3], step[4])
-            moving_mean[i] = step[2] * 0.1 + 0.9* moving_mean[i]
-        """
-
-
-        slowdown = get_avg_slowdown(info)
-        print(chosen_actions)
-        print("[episode %d] average episode length : %d" % (current_ep, ep_len), "episode reward : %f, Slowdown: %0.2f" % (ep_reward, slowdown))
 
 if __name__ == "__main__":
     __main__()
