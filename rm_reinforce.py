@@ -24,10 +24,10 @@ state_dim = np.prod(ob.shape)
 action_dim = test_env.action_space.n
 episode_max_length = 500
 discount = 0.99
-batch_size = 5
+batch_size = 20
 lr = 0.001
 seed = 1234
-num_train_seq = 5
+num_train_seq = 50
 aspace = np.arange(action_dim, dtype=int)
 
 if args.model == "ppo":
