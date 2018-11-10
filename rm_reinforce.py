@@ -34,7 +34,7 @@ if args.model == "ppo":
     print("ppo model used")
     model = rl_ppo.model(
         sess, state_dim, action_dim, lr, network_widths=[20],
-        update_step=20, epsilon=15)
+        update_step=20, epsilon=0.2)
 else:
     print("REINFORCE! model used")
     model = rl.model(sess, state_dim, action_dim, lr, network_widths=[20])
