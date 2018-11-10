@@ -33,7 +33,7 @@ aspace = np.arange(action_dim, dtype=int)
 if args.model == "ppo":
     print("ppo model used")
     model = rl_ppo.model(
-        sess, state_dim, action_dim, lr, network_widths=[20],
+        sess, state_dim, action_dim, lr, network_widths=[30],
         update_step=20, epsilon=0.2)
 else:
     print("REINFORCE! model used")
