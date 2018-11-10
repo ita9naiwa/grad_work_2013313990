@@ -11,9 +11,9 @@ import src.envs.Mao as mao
 from src.utils import *
 
 np.random.seed(1)
-episode_max_length = 100
+force_stop = 100
 num_slots = 10
-force_stop = 200
+force_stop = 400
 env = get_env("configs/env.json", 1541)
 test_env = get_env("configs/env.json", None)
 sess = tf.Session()
@@ -134,7 +134,7 @@ def __main__():
             rew = 0
             test_env.reset(seq_no=i)
             s = test_env._observe()
-            for ep_len in range(episode_max_length):
+            for ep_len in range(force_stop):
                 a = model.get_action_dist(s)
                 if FILTER_OUTPUT:
                     ob_dict = test_env._observe(ob_as_dict=True)

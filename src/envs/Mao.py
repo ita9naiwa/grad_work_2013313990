@@ -42,7 +42,7 @@ class ClusteringEnv():
 
         self.state_space = spaces.Discrete(self.num_slots)
         self.action_space = spaces.Discrete(self.num_slots + 1) # num # n_resources denotes do nothing.
-        self.scenarios = [self.dist.generate_work_sequence() for _ in range(100)]
+        self.scenarios = [self.dist.generate_work_sequence() for _ in range(50)]
         self.current_scenario = None
 
     def render(self, mode='human'):
@@ -192,6 +192,8 @@ class ClusteringEnv():
         }
         if ob_as_dict is True:
             return observation
+        if self.observation_mode == "rnn":
+            return self.observation_to_rnn_sequence()
         if self.observation_mode == 'image':
             return flatten(self.observation_to_2d_repr(observation))
         else:
@@ -200,6 +202,53 @@ class ClusteringEnv():
 
     def observation(self):
         return self._observe()
+
+    def observation_to_rnn_sequence(self, one_hot=False):
+        machine = self.machine.repr()
+        time_horizon = machine.shape[0]
+        rep = []
+        for i, cap in enumerate(self.n_resource_slot_capacities):
+            rep_one = None
+            if one_hot is True:
+                rep_one = np.zeros(shape=(time_horizon, cap + 1))
+            else:
+                rep_one = np.zeros(shape=(time_horizon, cap))
+            rep.append(rep_one)
+            for t in range(time_horizon):
+                if one_hot is False:
+                    rep[i][t, :machine[t][i]] = 1
+                else:
+                    rep[i][t, machine[t][i]] = 1
+        job_reprs = []
+
+        for job in self.job_slot.slot:
+            if job is None:
+                if one_hot is True:
+                    job_repr = np.zeros(shape=(np.sum(self.n_resource_slot_capacities) + 3))
+                else:
+                    job_repr = np.zeros(shape=(np.sum(self.n_resource_slot_capacities) + 1))
+                job_reprs.append(job_repr)
+                #print("nojob!", job_repr.shape)
+                continue
+
+            reprs = []
+            for i, cap in enumerate(self.n_resource_slot_capacities):
+                res_one = None
+                if one_hot is True:
+                    res_one = np.zeros(shape=(cap + 1,))
+                    res_one[job.res_vec[i]] = 1
+                else:
+                    res_one = np.zeros(shape=(cap,))
+                    res_one[job.res_vec[i]:] = 1
+                reprs.append(res_one)
+            reprs.append([self.current_timestep - job.enter_time])
+            job_repr = np.hstack(reprs)
+            #print("job!", job_repr.shape)
+            job_reprs.append(job_repr)
+        #print(job_reprs)
+        job_reprs = np.vstack(job_reprs)
+        machine_repr = np.hstack(rep)
+        return flatten(machine_repr), job_reprs
 
     def observation_to_2d_repr(self, observation):
         #print(observation)
