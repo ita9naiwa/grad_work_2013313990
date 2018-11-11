@@ -19,15 +19,15 @@ for i_episode in range(10):
     for t in range(config['ep_force_stop']):
         #env.render()
         #p = get_possible_actions(env)
-        p = env.observation_to_rnn_sequence(one_hot=False)
-        print(p[0].shape)
-        print(p[1].shape)
+        #p = env.observation_to_rnn_sequence(one_hot=False)
+        #print(p[0].shape)
+        #print(p[1].shape)
         #print(p)
         action = get_sjf_action(env)
         #print(env.machine.repr())
         observation, reward, done, info = env.step(action)
         #print(info)
-        sleep(0.1)
+        #sleep(0.1)
         if done:
             break
         #sleep(10.0)
