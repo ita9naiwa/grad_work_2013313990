@@ -96,7 +96,7 @@ class Reward(object):
 
 
 def __main__():
-    FILTER_OUTPUT = True
+    FILTER_OUTPUT = False
     sess.run(tf.initializers.global_variables())
     for ite in range(1000):
         replay_buffer = ReplayBuffer(buffer_size)
@@ -112,9 +112,6 @@ def __main__():
             for ep_len in range(force_stop):
                 a = model.get_action_dist(s)
                 ob_dict = env._observe(ob_as_dict=True)
-                impossible_actions = get_impossible_actions(ob_dict)
-                a[impossible_actions] = -np.inf
-                a = np.exp(a)
                 a /= np.sum(a)
                 #print(a)
                 action = np.random.choice(aspace, p=a)
@@ -129,6 +126,7 @@ def __main__():
                 if done:
                     break
                 s = s2
+
         rewards, ep_lengths, slowdowns = [], [], []
         for i in range(10):
             rew = 0

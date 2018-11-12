@@ -24,7 +24,7 @@ class model(object):
     def _create_network(self):
         #is it automatically flattend?
         #otherwise, manually flat inputs
-        w_init = tflearn.initializations.normal(mean=0.0, stddev=0.01)
+        w_init = tflearn.initializations.xavier()
         b_init = tflearn.initializations.zeros()
         states = inputs = tflearn.input_data(shape=(None, self.state_dim), dtype=tf.float32, name="states")
         net = tflearn.fully_connected(inputs, self.network_widths[0], weights_init=w_init, bias_init=b_init)
@@ -44,7 +44,7 @@ class model(object):
         actions = tflearn.input_data(shape=(None,), dtype=tf.int32, name='actions')
         values = tflearn.input_data(shape=(None,), dtype=tf.float32, name='values')
         self.N = N = tflearn.input_data(shape=(), dtype=tf.int32)
-        self.indices = indices = tf.stack([tf.range(N, dtype=tf.int32), actions], axis=1)
+        indices = tf.stack([tf.range(tf.shape(actions)[0], dtype=tf.int32), self.actions], axis=1)
         self.p_s_a = p_s_a = tf.gather_nd(out, indices)
         self.loss = loss = -tf.reduce_mean(p_s_a * values)
         gradients = tf.gradients(loss, parameters)
