@@ -37,7 +37,7 @@ for i_episode in range(10):
 
 with open("configs/test_env.pkl", "wb") as f:
     import pickle
-    #pickle.dump(env, f)
+    pickle.dump(env, f)
 print(np.mean(sds))
 
 #        if done:
