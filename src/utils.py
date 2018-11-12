@@ -63,6 +63,15 @@ def flatten(m):
     state_dim = np.prod(m.shape)
     return np.reshape(m, newshape=(state_dim,))
 
+def finisihed_job_cnt(info):
+    sds = 0
+    for job in info.values():
+        if job is None:
+            continue
+        if job.finish_time < 0:
+            continue
+        sds += 1
+    return sds
 
 def get_avg_slowdown(info):
     sds = []

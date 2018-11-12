@@ -5,7 +5,7 @@ import gym
 import numpy as np
 from src.utils import (
     get_env, get_avg_slowdown, get_sjf_action,
-    get_possible_actions)
+    get_possible_actions, finisihed_job_cnt)
 
 
 with open("configs/env.json", 'r') as f:
@@ -14,7 +14,8 @@ with open("configs/env.json", 'r') as f:
 env = get_env("configs/env.json")
 
 sds = []
-for i_episode in range(10):
+cnt = []
+for i_episode in range(30):
     observation = env.reset(seq_no=i_episode)
     for t in range(config['ep_force_stop']):
         #env.render()
@@ -31,6 +32,7 @@ for i_episode in range(10):
         if done:
             break
         #sleep(10.0)
+    cnt.append(finisihed_job_cnt(info))
     slowdown = get_avg_slowdown(info)
     #print(slowdown)
     sds.append(slowdown)
@@ -40,6 +42,7 @@ with open("configs/test_env.pkl", "wb") as f:
     pickle.dump(env, f)
 print(np.mean(sds))
 
+print(np.mean(cnt))
 #        if done:
 #            print("Episode finished after {} timesteps".format(t+1))
 #            break

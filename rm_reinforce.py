@@ -117,6 +117,7 @@ def __main__():
             ep_lengths = []
             rewards = []
             slowdowns = []
+            finisihed_job_cnts = []
             print(loss)
 
             for i in range(30):
@@ -142,9 +143,10 @@ def __main__():
                 ep_lengths.append(ep_len)
                 rewards.append(rew)
                 slowdowns.append(get_avg_slowdown(info))
-
-            print("[iter %d] avg episode length : %0.1f avg total rewards : %0.2f avg slowdowns: %0.2f" %
-                (iter, np.mean(ep_lengths), np.mean(rewards), np.mean(slowdowns)))
+                finisihed_job_cnts.append(finisihed_job_cnt(info))
+            print("[iter %d] avg episode length : %0.1f avg total rewards : %0.2f avg slowdowns: %0.2f finisihed_job_cnt: %0.2f" %
+                (iter, np.mean(ep_lengths), np.mean(rewards), np.mean(slowdowns),
+                np.mean(finished_job_cnts)))
 
 if __name__ == "__main__":
     __main__()
