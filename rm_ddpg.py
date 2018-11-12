@@ -54,7 +54,6 @@ def get_impossible_actions(observation):
             r = machine[i:i + durations[j]] - resource_vectors[j]
             q = np.all(r >= 0)
             if q:
-                #candidates.append(j)
                 pass
             else:
                 candidates.append(j)
@@ -89,7 +88,7 @@ class Reward(object):
         discounted *= self.factor
 
         for i in range(len(discounted)):
-            ep_batch[i,2] = discounted[i]
+            ep_batch[i, 2] = discounted[i]
 
         return ep_batch
 
@@ -111,7 +110,6 @@ def __main__():
 
             for ep_len in range(force_stop):
                 a = model.get_action_dist(s)
-                ob_dict = env._observe(ob_as_dict=True)
                 a /= np.sum(a)
                 #print(a)
                 action = np.random.choice(aspace, p=a)
