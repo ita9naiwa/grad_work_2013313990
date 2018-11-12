@@ -26,10 +26,10 @@ state_dim = np.prod(ob.shape)
 action_dim = test_env.action_space.n
 episode_max_length = 500
 discount = 0.99
-batch_size = 20
+batch_size = 3
 lr = 0.001
 seed = 1234
-num_train_seq = 50
+num_train_seq = 3
 aspace = np.arange(action_dim, dtype=int)
 
 if args.model == "ppo":
@@ -146,7 +146,7 @@ def __main__():
                 finisihed_job_cnts.append(finisihed_job_cnt(info))
             print("[iter %d] avg episode length : %0.1f avg total rewards : %0.2f avg slowdowns: %0.2f finisihed_job_cnt: %0.2f" %
                 (iter, np.mean(ep_lengths), np.mean(rewards), np.mean(slowdowns),
-                np.mean(finished_job_cnts)))
+                np.mean(finisihed_job_cnts)))
 
 if __name__ == "__main__":
     __main__()
