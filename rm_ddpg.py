@@ -126,7 +126,7 @@ def __main__():
                 s = s2
 
         rewards, ep_lengths, slowdowns = [], [], []
-        for i in range(10):
+        for i in range(30):
             rew = 0
             test_env.reset(seq_no=i)
             s = test_env._observe()

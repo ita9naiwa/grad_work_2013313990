@@ -17,7 +17,9 @@ parser.add_argument('--filter_output', metavar='filter_output', type=bool)
 
 args = parser.parse_args()
 
-test_env = get_env("configs/env.json", None)
+import pickle
+with open("configs/test_env.pkl", 'rb') as f:
+    test_env = pickle.load(f)
 sess = tf.Session()
 ob = test_env.reset()
 state_dim = np.prod(ob.shape)
@@ -117,7 +119,7 @@ def __main__():
             slowdowns = []
             print(loss)
 
-            for i in range(10):
+            for i in range(30):
                 rew = 0
                 test_env.reset(seq_no=i)
                 s = test_env._observe()
