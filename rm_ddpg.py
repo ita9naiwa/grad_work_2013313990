@@ -29,7 +29,7 @@ actor_lr = 1e-5
 critic_lr = 1e-4
 tau = 0.001
 seed = 1234
-model = ddpg.DDPG(sess, action_dim, state_dim, actor_lr, critic_lr, tau=tau, use_softmax=False)
+model = ddpg.DDPG(sess, action_dim, state_dim, actor_lr, critic_lr, tau=tau, use_softmax=True)
 
 def get_impossible_actions(observation):
     machine = observation['machine']
