@@ -75,7 +75,7 @@ def __main__():
     model = reinforce_pro.model(sess, state_dim, action_dim, lr,
                 network_widths=[50, 40], update_step=15)
     sess.run(tf.initializers.global_variables())
-    trajWorkers = [traj_worker(model, copy.copy(env)) for _  in range(10)]
+    trajWorkers = [traj_worker(model, copy.copy(env)) for _ in range(10)]
     with ThreadPoolExecutor(max_workers=4) as exec:
 
         for iter in range(1000):

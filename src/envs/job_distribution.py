@@ -18,10 +18,10 @@ class dist:
         self.job_max = job_len
         self.p_small_job = p_small_job
 
-        self.job_max_large = ((job_len//3)*2, job_len + 1)
-        self.job_max_small = (1, (job_len//5) + 1)
+        self.job_max_large = ((self.job_max // 2), self.job_max + 1)
+        self.job_max_small = (1, (self.job_max // 5) + 1)
 
-        self.dominant_resource_usage = (max_resource_usage //2, max_resource_usage + 1)
+        self.dominant_resource_usage = (max_resource_usage // 3, max_resource_usage + 1)
         self.secondary_resource_usage = (1, max_resource_usage // 5 + 1)
 
     def bi_model_dist(self):
@@ -52,17 +52,19 @@ class dist:
         return 0, np.zeros(self.num_resources)
 
     def generate_work_sequence(self):
-        ret = [None for _ in range(self.episode_max_size)]
+        ret = [[] for _ in range(self.episode_max_size)]
         job_lengths = []
         job_sizes = []
 
         for i in range(self.episode_max_size):
-            if np.random.rand() < self.new_job_rate:
+            #if np.random.rand() < self.new_job_rate:
+            new_job_cnt = np.random.poisson(self.new_job_rate)
+            for jc in range(new_job_cnt):
                 # new job arrives!
                 length, size = self.bi_model_dist()
                 job_lengths.append(length)
                 job_sizes.append(size)
-                ret[i] = {"duration": length, "size": size}
+                ret[i].append( {"duration": length, "size": size})
         return ret
 
     def generate_work_sequences_heap(self):

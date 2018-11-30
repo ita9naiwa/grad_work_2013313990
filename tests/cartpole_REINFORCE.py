@@ -18,10 +18,10 @@ state_dim = 4
 action_dim = env.action_space.n
 episode_max_length = 500
 discount = 0.99
-batch_size = 20
+batch_size = 15
 render = True
-buffer_size = 100000
-lr = 0.001
+buffer_size = 1000
+lr = 0.002
 seed = 1234
 aspace = np.arange(action_dim, dtype=int)
 
@@ -70,11 +70,10 @@ class traj_worker():
 
 def __main__():
     model = rl.model(sess, state_dim, action_dim, lr,
-                network_widths=[50, 40])
+                network_widths=[128, 20])
     sess.run(tf.initializers.global_variables())
-    trajWorkers = [traj_worker(model, copy.copy(env)) for _  in range(10)]
+    trajWorkers = [traj_worker(model, copy.copy(env)) for _ in range(10)]
     with ThreadPoolExecutor(max_workers=4) as exec:
-
         for iter in range(1000):
 
             futures = []
@@ -89,8 +88,8 @@ def __main__():
                 S = np.vstack([S, s])
                 A = np.hstack([A, a])
                 ADV = np.hstack([ADV, adv])
-
-            loss = model.train(S, A, ADV)
+            for kkk in range(5):
+                loss = model.train(S, A, ADV)
             s = env.reset()
             ep_lengths = []
 

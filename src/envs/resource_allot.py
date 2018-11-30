@@ -1,3 +1,4 @@
+from time import sleep
 from .job_distribution import dist
 from .variables import Job, JobBacklog, JobRecord, JobSlot, ExtraInfo, Machine
 import matplotlib.pyplot as plt
@@ -17,11 +18,11 @@ def flatten(m):
     state_dim = np.prod(m.shape)
     return np.reshape(m, newshape=(state_dim,))
 
-class ClusteringEnv():
+class env():
     metadata = {'render.modes': ['human']}
     def __init__(self, episode_size=1000, force_stop=2000, observation_mode='image',
                 n_resource_slot_capacities=(10, 10), p_job_arrival=0.3, max_job_length=15,
-                num_slots=5, backlog_size=60,time_horizon=20):
+                num_slots=5, backlog_size=60, time_horizon=20):
         self.episode_size = episode_size
         self.force_stop = max(force_stop, 2* self.episode_size)
         self.observation_mode = observation_mode
@@ -34,8 +35,7 @@ class ClusteringEnv():
         self.n_resource_slot_capacities = n_resource_slot_capacities
         self.max_job_length = max_job_length
         self.dist = dist(episode_max_size=self.episode_size, new_job_rate=p_job_arrival, job_len=max_job_length,
-                num_resources=self.n_resources, max_resource_usage=15)
-        self.prev_timestep_proceeded = False
+                num_resources=self.n_resources, max_resource_usage=40)
         self.seq_num = 0
         self.seq_idx = 0
         self.renderer = None
@@ -73,7 +73,7 @@ class ClusteringEnv():
 
         title = "available"
         for i in range(self.num_slots):
-            title += "\t\tjob slot %d" % (i)
+            title += "\t\tjob slot %d" % i
         txt = ["" for _ in range(self.time_horizon)]
         for i in range(self.time_horizon):
             for j in self.machine.avbl_slot[i]:
@@ -88,7 +88,7 @@ class ClusteringEnv():
                 x[0] = "usage"
                 x[1] = "("
                 for r in job.res_vec:
-                    x[1] += str(int(r))+","
+                    x[1] += str(int(r)) + ","
                 x[1] = str(x[1][:-1])
                 x[1] += ")"
                 x[2] = "length"
@@ -101,7 +101,7 @@ class ClusteringEnv():
         b = a * 200
         print(b)
 
-        print("We're in timestep %d, timestamp %d" % (self.current_timestep, self.current_timestamp))
+        print("We're in timestep %d" % (self.current_timestep))
         print(title)
         for i in range(max(self.time_horizon, 6)):
             if i < self.time_horizon:
@@ -117,28 +117,61 @@ class ClusteringEnv():
 
         pass
 
-    def step(self, a):
-        self.last_timestamp_timestep = self.current_timestep
-        self.sync()
-        # can't pick job or slot is full;
-        proceed = True
-        if (a == self.num_slots) or (self.job_slot[a] is None):
-            self._handle_move()
-        # pick job `a` and do
-        else:
-            assigned = self.handle_assign(a)
-            # if the model choose wrong action, then move
-            if assigned is False:
-                self._handle_move()
-            else:
-                proceed = False
-        if self.last_timestamp_timestep != self.current_timestep:
-            self._proceed()
+    def step(self, job_list):
+        self.current_timestep += 1
+        # check there is new job coming
 
-        self.current_timestamp += 1
+        if self.episode_size <= self.current_timestep:
+            pass
+        else:
+            #print("new job at this step ", len(self.current_scenario[self.current_timestep]))
+            for job in self.current_scenario[self.current_timestep]:
+                size = job['size']
+                duration = job['duration']
+                if duration != 0:
+                    new_job = Job(size, duration, len(self.job_record.record), self.current_timestep)
+                    try:
+                        self.job_backlog.append_job(new_job)
+                    except:
+                        print("backlog is full!")
+                        self.render()
+                    self.extra_info.new_job_comes()
+                    self.job_record.record[new_job.id] = new_job
+
+        # move job in backlog to job slot if possible
+        self._dequeue_backlog()
+
+        for job in job_list:
+            if self.job_slot.slot[job] is None:
+                print("request jobs that are not in the slot")
+                temp = [(x, y is not None) for (x, y) in enumerate(self.job_slot.slot)]
+                print(job_list)
+                print(temp)
+                continue
+            assigned = self.handle_assign(job)
+            if assigned is True:
+                #print("normal assign")
+                pass
+            else:
+
+                print(job_list)
+                #print("job length:", self.job_slot.slot[job].len)
+                print("Not assigned job %d" % job)
+                self.render()
+
+                sleep(2.0)
+
+                pass
+
+        # move job in backlog to job slot if possible
+        self._dequeue_backlog()
+
+        self.extra_info.time_proceed()
+        durations, taken_times = self.machine.time_proceed(self.current_timestep)
+
         done = self._is_finished()
         observation = self._observe()
-        reward = self._get_reward(proceed)
+        reward = self._get_reward()
         info = self.job_record.record
 
         return observation, reward, done, info
@@ -154,17 +187,14 @@ class ClusteringEnv():
             self.current_scenario = self.scenarios[seq_no]
 
         self.renderer = None
-        self.last_timestamp_timestep = 0
         self.current_timestep = 0
-        self.current_timestamp = 0
         self.job_slot = JobSlot(self.num_slots)
         self.job_backlog = JobBacklog(self.backlog_size)
         self.job_record = JobRecord()
         self.extra_info = ExtraInfo()
-        self.finished_job_durations = []
-        self.finisihed_job_times_taken = []
-        self.machine = Machine(self.max_job_length, self.n_resources, self.time_horizon, self.n_resource_slot_capacities)
-        self.last_job_activated_timestep = -1
+        self.machine = Machine(
+            self.max_job_length, self.n_resources,
+            self.time_horizon, self.n_resource_slot_capacities)
         return self._observe()
 
 
@@ -190,15 +220,7 @@ class ClusteringEnv():
             "job_backlog": job_backlog_repr,
             "extra_info": extra_info
         }
-        if ob_as_dict is True:
-            return observation
-        if self.observation_mode == "rnn":
-            return self.observation_to_rnn_sequence()
-        if self.observation_mode == 'image':
-            return flatten(self.observation_to_2d_repr(observation))
-        else:
-            return observation
-
+        return observation
 
     def observation(self):
         return self._observe()
@@ -223,11 +245,7 @@ class ClusteringEnv():
 
         for job in self.job_slot.slot:
             if job is None:
-                if one_hot is True:
-                    job_repr = np.zeros(shape=(np.sum(self.n_resource_slot_capacities) + 3))
-                else:
-                    job_repr = np.zeros(shape=(np.sum(self.n_resource_slot_capacities) + 1))
-                job_reprs.append(job_repr)
+                job_reprs.append(None)
                 #print("nojob!", job_repr.shape)
                 continue
 
@@ -246,92 +264,9 @@ class ClusteringEnv():
             #print("job!", job_repr.shape)
             job_reprs.append(job_repr)
         #print(job_reprs)
-        job_reprs = np.vstack(job_reprs)
+        #job_reprs = np.vstack(job_reprs)
         machine_repr = np.hstack(rep)
         return flatten(machine_repr), job_reprs
-
-    def observation_to_2d_repr(self, observation):
-        #print(observation)
-        n_resource_slot_capacities = self.n_resource_slot_capacities
-        machine = observation['machine']
-        job_slot = observation['job_slot']
-        num_job_slots = len(job_slot['lengths'])
-        backlog = observation['job_backlog']
-        backlog_size = len(backlog)
-        time_horizon, num_resources = observation['machine'].shape
-
-        ret_ret = []
-        for resource_index in range(num_resources):
-            ret = []
-            capacity = n_resource_slot_capacities[resource_index]
-            gph = np.zeros(shape=(time_horizon, capacity), dtype=np.float32)
-            for i in range(time_horizon):
-                usage = capacity - machine[i, resource_index]
-                gph[i, :usage] = 1.0
-            ret.append(gph)
-
-            for i in range(num_job_slots):
-                gph = np.zeros(shape=(time_horizon, capacity), dtype=np.float32)
-                l = job_slot['lengths'][i]
-                if l is None:
-                    pass
-                else:
-                    usage = job_slot['resource_vectors'][i][resource_index]
-                    gph[:l, :usage] = 1.0
-                ret.append(gph)
-            ret = np.concatenate(ret, axis=1)
-            ret_ret.append(ret)
-        new_width = 1 + (backlog_size // time_horizon)
-        ret = np.concatenate([backlog, np.zeros(shape=(time_horizon * new_width - backlog_size,))]).reshape(
-                          time_horizon, new_width)
-
-        ret_ret.append(ret)
-        ret_ret = np.concatenate(ret_ret, axis=1)
-        return ret_ret
-
-    def _get_avg_slowdown(self):
-        ret = 0.0
-        if len(self.finished_job_durations) > 0:
-            ret +=  np.mean([taken_time / float(duration) for (taken_time, duration)
-                in zip(self.finisihed_job_times_taken, self.finished_job_durations)])
-        for job in (
-            self.machine.running_jobs + self.job_slot.slot + self.job_backlog.backlog):
-            if job is None:
-                continue
-            ret += (self.current_timestep - job.enter_time) / float(job.len)
-
-        return ret
-
-    def _proceed(self):
-        # check there's finished jobs
-        self.extra_info.time_proceed()
-        durations, taken_times = self.machine.time_proceed(self.current_timestep)
-        self.finished_job_durations += durations
-        self.finisihed_job_times_taken += taken_times
-
-
-    def sync(self):
-        # check there is new job coming
-        if self.episode_size <= self.current_timestep:
-            pass
-        elif (self.last_job_activated_timestep != self.current_timestep) and (self.episode_size > self.current_timestamp) and (self.current_scenario[self.current_timestep] is not None):
-            #if there's an new job
-            self.last_job_activated_timestep = self.current_timestep
-            size = self.current_scenario[self.current_timestep]['size']
-            duration = self.current_scenario[self.current_timestep]['duration']
-            if duration != 0:
-                new_job = Job(size, duration, len(self.job_record.record), self.current_timestep)
-                self.job_backlog.append_job(new_job)
-                self.extra_info.new_job_comes()
-                self.job_record.record[new_job.id] = new_job
-
-
-        if self.job_backlog.num_jobs() > 0:
-            pass
-
-        # move job in backlog to job slot if possible
-        self._dequeue_backlog()
-
 
     def _dequeue_backlog(self):
         while True:
@@ -342,26 +277,34 @@ class ClusteringEnv():
             job = self.job_backlog.get_job()
             self.job_slot.assign(job)
 
-    def _get_reward(self, proceed):
+    def _get_reward(self):
         reward = 0
-        if proceed is False:
-            return 0
+        #print("--")
 
+        #reward = -np.sum(self.machine.avbl_slot[0] / np.array([100, 100, 100]))
+        #return reward
+        #print("--")
+
+        """
         for job in self.machine.running_jobs:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
+
+        """
 
         for job in self.job_slot.slot:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
 
+        """
         for job in self.job_backlog.backlog:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
 
+        """
         return reward
 
 
@@ -371,6 +314,8 @@ class ClusteringEnv():
 
     def handle_assign(self, i):
         job = self.job_slot[i]
+        if job is None:
+            return False
         if self.machine.allocate_job(job, self.current_timestep) is True:
             self.job_record.record[job.id] = job
             self.job_slot.release(i)
@@ -383,7 +328,7 @@ class ClusteringEnv():
 
 
     def _is_finished(self):
-        ret = self.force_stop <= self.current_timestamp
+        ret = self.force_stop <= self.current_timestep
         ret2 = self.current_timestep >= self.episode_size
         ret2 &= self.job_slot.num_allocated_jobs() == 0
         ret2 &= self.job_backlog.num_jobs() == 0

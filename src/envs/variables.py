@@ -135,16 +135,18 @@ class Machine:
 
     def allocate_job(self, job, curr_time):
         allocated = False
-        for t in range(0, self.time_horizon - job.len):
-            new_avbl_res = self.avbl_slot[t: t + job.len, :] - job.res_vec
-            if np.all(new_avbl_res[:] >= 0):
+        #for t in range(0, self.time_horizon - job.len):
+        #with 0 as t:
+        t = 0
+        new_avbl_res = self.avbl_slot[t: t + job.len, :] - job.res_vec
+        if np.all(new_avbl_res[:] >= 0):
 
-                self.avbl_slot[t: t + job.len, :] = new_avbl_res
-                job.start_time = curr_time + t
-                job.finish_time = job.start_time + job.len
-                self.running_jobs.append(job)
-                allocated = True
-                break
+            self.avbl_slot[t: t + job.len, :] = new_avbl_res
+            job.start_time = curr_time + t
+            job.finish_time = job.start_time + job.len
+            self.running_jobs.append(job)
+            allocated = True
+
 
         return allocated
 

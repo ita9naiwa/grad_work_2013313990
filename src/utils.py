@@ -1,8 +1,7 @@
 import numpy as np
 import scipy
 import pickle
-import src.envs.Mao as Mao
-
+import src.envs.resource_allot as Env
 def get_env(config_path, seed=None):
     import json
     with open(config_path, 'r') as f:
@@ -11,13 +10,14 @@ def get_env(config_path, seed=None):
         np.random.seed(config['test_seed'])
     else:
         np.random.seed(seed)
-    env = Mao.ClusteringEnv(
+    env = Env.env(
         p_job_arrival=config['p_job_arrival'],
         observation_mode='image',
         episode_size=config['episode_size'],
         force_stop=config['ep_force_stop'],
         num_slots=config['num_slots'],
         max_job_length=config['max_job_length'],
+        backlog_size=config['backlog_size'],
         n_resource_slot_capacities=config['n_resource_slot_capacities'])
     return env
 
@@ -35,14 +35,9 @@ def get_possible_actions(env):
     for j in range(num_slots):
         if durations[j] is None:
             continue
-
-        for i in range(time_horizon):
-            if i + durations[j] >= time_horizon:
-                break
-            r = machine[i:i + durations[j]] - resource_vectors[j]
-            if np.all(r >= 0):
-                candidates.append(j)
-                break
+        r = machine[:durations[j]] - resource_vectors[j]
+        if np.all(r >= 0):
+            candidates.append(j)
 
     return candidates
 
@@ -97,6 +92,51 @@ def discount(x, gamma):
     # scipy.signal.lfilter([1],[1,-gamma],x[::-1], axis=0)[::-1]
     return out
 
+def get_tetris_action(env):
+    machine = env.machine.repr()
+    job_slot = env.job_slot.repr()
+    sjf_score = 0
+    durations = job_slot['lengths']
+    resource_vectors = job_slot['resource_vectors']
+    enter_time = job_slot['enter_times']
+    num_slots  = len(durations)
+
+    time_horizon = machine.shape[0]
+
+    ret = num_slots
+
+    actions = []
+    allocated = True
+    machine_repr = np.copy(env.machine.repr())
+
+    while allocated is True:
+        candidates = []
+        for j in range(num_slots):
+            if j in actions:
+                continue
+            if durations[j] is None:
+                continue
+
+            R = machine_repr[:durations[j], :] - resource_vectors[j]
+            if np.all(R >= 0):
+                sc = np.dot(machine_repr[0, :], resource_vectors[j])
+                dur = durations[j]
+                score = (0.5 / 10000) * sc + 0.5 * (1 / dur)
+                candidates.append((-score, enter_time[j], j))
+
+        candidates = sorted(candidates)
+        if len(candidates) > 0:
+            allocated = True
+            selected = candidates[0][2]
+            actions.append(selected)
+            machine_repr[:durations[selected]] -= resource_vectors[selected]
+        else:
+            allocated = False
+            break
+    #print("chosen actions", actions)
+    return actions
+
+
 def get_sjf_action(env):
     machine = env.machine.repr()
     job_slot = env.job_slot.repr()
@@ -109,19 +149,31 @@ def get_sjf_action(env):
     time_horizon = machine.shape[0]
 
     ret = num_slots
-    candidates = []
-    for j in range(num_slots):
-        if durations[j] is None:
-            continue
-        for i in range(time_horizon):
-            if i + durations[j] >= time_horizon:
-                break
-            r = machine[i:i + durations[j]] - resource_vectors[j]
-            q = np.all(r >= 0)
-            if q:
+
+    actions = []
+    allocated = True
+    machine_repr = np.copy(env.machine.repr())
+
+    while allocated is True:
+        candidates = []
+        for j in range(num_slots):
+            if j in actions:
+                continue
+            if durations[j] is None:
+                continue
+
+            R = machine_repr[:durations[j], :] - resource_vectors[j]
+            if np.all(R >= 0):
                 candidates.append((durations[j], enter_time[j], j))
-    candidates = sorted(candidates)
-    if len(candidates) > 0:
-        return candidates[0][2]
-    else:
-        return ret
+
+        candidates = sorted(candidates)
+        if len(candidates) > 0:
+            allocated = True
+            selected = candidates[0][2]
+            actions.append(selected)
+            machine_repr[:durations[selected]] -= resource_vectors[selected]
+        else:
+            allocated = False
+            break
+    #print("chosen actions", actions)
+    return actions

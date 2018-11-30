@@ -45,7 +45,7 @@ class model(object):
 
         a_indices = tf.stack([tf.range(tf.shape(self.actions)[0], dtype=tf.int32), self.actions], axis=1)
         self.p_s_a = p_s_a = tf.gather_nd(out, a_indices)
-        self.loss = loss = -tf.reduce_mean(p_s_a * self.advantages)
+        self.loss = loss = -tf.reduce_mean(tf.log(p_s_a) * self.advantages)
         parameters = tf.trainable_variables()
         gradients = tf.gradients(loss, parameters)
         #gradients = [-g for g in gradients]
