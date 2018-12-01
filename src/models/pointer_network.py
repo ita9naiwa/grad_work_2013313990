@@ -46,7 +46,7 @@ class input_transform(nn.Module):
     def __init__(self, input_size, embedding_size=32, nonlinear=False):
         super(input_transform, self).__init__()
         self.enc = nn.Parameter(Variable(torch.FloatTensor(input_size, embedding_size)))
-        var = math.sqrt(input_size+embedding_size)
+        var = math.sqrt(input_size + embedding_size)
         self.enc.data.uniform_(-(1. / var) , 1. / var)
         self.nonlinear = nonlinear
         if nonlinear is True:
@@ -97,8 +97,6 @@ class state_transform(nn.Module):
         return embedded
 
 
-
-
 class pointer_networks(nn.Module):
     def __init__(self,
             state_size,
@@ -108,7 +106,8 @@ class pointer_networks(nn.Module):
             max_job_length,
             nonlinear_transform=False,
             glimpse=False,
-            use_tanh=True):
+            use_tanh=True,
+            as_critic=False):
         super(pointer_networks, self).__init__()
 
         self.MASK_CONSTANT = 1000.0
@@ -120,6 +119,13 @@ class pointer_networks(nn.Module):
         self.nonlinear_transform = nonlinear_transform
         self.glimpse = glimpse
         self.use_tanh = use_tanh
+        self.as_critic = critic
+
+
+        if self.as_critic is True:
+            self.nn1 = nn.Linear(self.hidden_size, self.hidden_size)
+            self.nn2 = nn.Linear(self.hidden_size, self.hiden_size)
+
         self.pointer = Attention(self.hidden_size, self.embedding_size)
         self.input_transform = input_transform(
             self.input_size, self.embedding_size,
@@ -129,6 +135,7 @@ class pointer_networks(nn.Module):
             nonlinear=self.nonlinear_transform)
 
 
+
         self.encoder = nn.LSTM(
             #self.input_size,
             self.embedding_size,
@@ -136,7 +143,7 @@ class pointer_networks(nn.Module):
             num_layers=1,
             batch_first=True)  # change num layer needed?
         self.decoder = nn.LSTM(
-            60,
+            self.embedding_size,
             hidden_size,
             num_layers=1,
             batch_first=True)
@@ -246,6 +253,99 @@ class pointer_networks(nn.Module):
 
         return [index_to_id[idx] for idx in chosen_items], chosen_items, np.mean(ents)
 
+    def get_action_(self, _state, _input, durations, job_reqs, id_to_index, index_to_id,
+            argmax=False):
+
+        enc, (h, c) = self.encode(_state, _input)
+
+        input_seq_len = enc.shape[1]
+        aspace = np.arange(input_seq_len)
+        stop_index = input_seq_len - 1
+
+        chosen = -1
+        chosen_items = []
+        cannot_placed = []
+        ents = []
+        #print("state shape",_state.shape)
+        while chosen != stop_index:
+            #print("!?")
+            pointer_dist, (h, c) = self.decode_single(_state, enc, h, c)
+            pointer_dist[0, stop_index] = -1e3
+            for i in range(input_seq_len):
+                if (i in chosen_items) or (i in cannot_placed):
+                    pointer_dist[0, i] = -1e4
+            #if torch.max(pointer_dist[0]) <= -1e5:
+            #    break
+            #print(pointer_dist[0])
+
+            softmaxed = pointer_dist.softmax(1)
+            #print(softmaxed[0].data.numpy())
+            ents.append(get_entorpy(softmaxed.clone().data.numpy()))
+            #print(softmaxed.data.numpy())
+            if argmax is False:
+                chosen = np.random.choice(aspace, p=softmaxed[0].data.numpy())
+            else:
+                chosen = np.argmax(softmaxed[0].data.numpy())
+            ns = _state.clone()
+
+            if chosen == stop_index:
+                break
+            else:
+                ns[:durations[chosen]] -= job_reqs[chosen]
+                if ns[:durations[chosen]].min() > 0:
+                    _state = ns
+                    chosen_items.append(chosen)
+                else:
+                    cannot_placed.append(chosen)
+
+        return chosen_items, np.mean(ents)
+
+    def get_s(self, _state, _input, durations):
+        enc, (h, c) = self.encode(_state, _input)
+
+        def input_tr(states):
+            #print(states.shape)
+            m_holder = torch.zeros(size=[1, 20, 3], dtype=torch.float32)
+
+            m_holder.data[0, :, :] = states
+
+            v = m_holder.view(m_holder.shape[0], -1)[:1]
+            #print(v.shape)
+            v.unsqueeze(1).shape
+            return v.unsqueeze(1)
+        state_input = self.state_transform(input_tr(_state))
+
+        out, (h, c) = self.decoder(state_input, (h, c))
+        out = self.nn2(F.relu(self.nn1(out[0])))
+        return out
+
+    def get_log_p_a_s(self, state, enc, durations, job_reqs, h, c, item_indices):
+
+        chosen_items = []
+        cannot_placed = []
+        loss = 1.0
+        input_seq_len = enc.shape[1]
+        entropy = 0
+        ent = 0
+        for chosen in item_indices:
+            pointer_dist, (h, c) = self.decode_single(state, enc, h, c)
+            for i in range(input_seq_len):
+                if i in chosen_items:
+                    #already chosen items
+                    pointer_dist[0, i] = -1e3
+            softmaxed = pointer_dist.softmax(1)[0, :]
+            _softmaxed = softmaxed + 0.0001
+            ent = torch.sum(_softmaxed * torch.log(_softmaxed))
+            entropy += ent
+            state[:durations[chosen]] -= job_reqs[chosen]
+            chosen_items.append(chosen)
+            loss *= softmaxed[chosen]
+
+        entropy = entropy / float(len(item_indices))
+        #loss *= softmaxed[0, stop_index]
+        p_a_s = -(torch.log(loss))
+        return p_a_s, entropy
+
     def train_single(self, state, action, adv):
         chosen_items = []
         cannot_placed = []
@@ -273,7 +373,7 @@ class pointer_networks(nn.Module):
             _state[:durations[chosen]] -= job_reqs[chosen]
             chosen_items.append(chosen)
             loss *= softmaxed[0, chosen]
-
+        #loss *= softmaxed[0, stop_index]
         loss = -(adv * torch.log(loss))
         return loss
 
@@ -289,8 +389,8 @@ class pointer_networks(nn.Module):
             #print(v.shape)
             v.unsqueeze(1).shape
             return v.unsqueeze(1)
-        #state_input = #self.state_transform(input_tr(states))
-        state_input = input_tr(states)
+        state_input = self.state_transform(input_tr(states))
+        #state_input = input_tr(states)
         #print("state_input_shape", state_input.shape)
         #print("stat#e_input.shape", state_input.shape)
         _, (h, c) = self.decoder(state_input, (h, c))

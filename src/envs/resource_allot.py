@@ -34,41 +34,20 @@ class env():
         self.time_horizon = max(time_horizon, max_job_length)
         self.n_resource_slot_capacities = n_resource_slot_capacities
         self.max_job_length = max_job_length
-        self.dist = dist(episode_max_size=self.episode_size, new_job_rate=p_job_arrival, job_len=max_job_length,
-                num_resources=self.n_resources, max_resource_usage=40)
+        self.dist = dist(
+            episode_max_size=self.episode_size, new_job_rate=p_job_arrival,
+            job_len=max_job_length, num_resources=self.n_resources, p_small_job=0.65,
+             max_resource_usage=75)
         self.seq_num = 0
         self.seq_idx = 0
         self.renderer = None
 
         self.state_space = spaces.Discrete(self.num_slots)
         self.action_space = spaces.Discrete(self.num_slots + 1) # num # n_resources denotes do nothing.
-        self.scenarios = [self.dist.generate_work_sequence() for _ in range(50)]
+        self.scenarios = [self.dist.generate_work_sequence() for _ in range(200)]
         self.current_scenario = None
 
     def render(self, mode='human'):
-        """
-        fig = plt.figure("screen", figsize=(5, 5))
-
-        if self.renderer is None:
-            self.renderer = plt.figure("screen", figsize=(5, 5))
-            self.renderer = rendering.SimpleImageViewer()
-
-
-        for i in range(self.n_resources):
-            plt.subplot(self.n_resources, 1, 1)
-            plt.imshow(self.machine.graphical_view[0])
-
-        canvas = FigureCanvas(fig)
-        canvas.draw()       # draw the canvas, cache the renderer
-        x, y, w, h  = fig.bbox.bounds
-        w, h = int(w), int(h)
-        img = np.fromstring(canvas.tostring_rgb(), dtype=np.uint8).reshape(h, w, 3)
-        print(img)
-        print(img.shape)
-        self.renderer.imshow(img)
-        print(w)
-        """
-
         a = "="
 
         title = "available"
@@ -281,30 +260,26 @@ class env():
         reward = 0
         #print("--")
 
-        #reward = -np.sum(self.machine.avbl_slot[0] / np.array([100, 100, 100]))
+        #reward = -2.0 * (
+        #    np.sum(self.machine.avbl_slot[0] / #np.array([100, 100, 100])))
         #return reward
         #print("--")
 
-        """
         for job in self.machine.running_jobs:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
-
-        """
 
         for job in self.job_slot.slot:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
 
-        """
+
         for job in self.job_backlog.backlog:
             if job is None:
                 continue
             reward += -1.0 / float(job.len)
-
-        """
         return reward
 
 

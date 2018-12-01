@@ -21,9 +21,7 @@ def get_trajs(self, seq_no, batch_size):
         list_s, list_a, list_r, list_y = [], [], [], []
         s = env.reset(seq_no=seq_no)
         for ep_len in range(1000):
-            a = model.get_action_dist(s)
-            a /= np.sum(a)
-            action = np.random.choice(aspace, p=a)
+            action = model.get_action(s)
             s2, r, done, info = env.step(action)
             list_s.append(s)
             list_a.append(action)

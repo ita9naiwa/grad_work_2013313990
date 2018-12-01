@@ -23,8 +23,8 @@ slowdowns = []
 fjc = []
 
 usages = np.empty(shape=(0, 3))
-for i in range(10):
-    s = env.reset(seq_no=30 + i)
+for i in range(30):
+    s = env.reset(seq_no=100 + i)
     rr = []
     for ep_len in range(config['ep_force_stop']):
         action = get_sjf_action(env)
@@ -52,8 +52,8 @@ slowdowns = []
 fjc = []
 
 usages = np.empty(shape=(0, 3))
-for i in range(10):
-    s = env.reset(seq_no=30 + i)
+for i in range(30):
+    s = env.reset(seq_no=100 + i)
     rr = []
     for ep_len in range(config['ep_force_stop']):
         action = get_tetris_action(env)

@@ -34,9 +34,9 @@ class ValueNetwork(nn.Module):
 
     def __init__(self,input_size,hidden_size,output_size):
         super(ValueNetwork, self).__init__()
-        self.fc1 = nn.Linear(input_size,hidden_size)
-        self.fc2 = nn.Linear(hidden_size,hidden_size)
-        self.fc3 = nn.Linear(hidden_size,output_size)
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, output_size)
 
     def forward(self,x):
         out = F.relu(self.fc1(x))
@@ -108,13 +108,14 @@ def main():
         actor_network_optim.zero_grad()
         log_softmax_actions = actor_network(states_var)
         vs = value_network(states_var).detach()
+        #print(vs.shape)
         # calculate qs
-        qs = Variable(torch.Tensor(discount_reward(rewards,0.85,final_r)))
+        qs = Variable(torch.Tensor(discount_reward(rewards,0.99,final_r)))
 
         advantages = qs - vs
         actor_network_loss = - torch.mean(torch.sum(log_softmax_actions * actions_var , 1)* advantages)
         actor_network_loss.backward()
-        torch.nn.utils.clip_grad_norm_(actor_network.parameters(), 0.5)
+        torch.nn.utils.clip_grad_norm_(actor_network.parameters(), 2.0)
         actor_network_optim.step()
 
         # train value network
@@ -125,7 +126,7 @@ def main():
         values = values.squeeze(1)
         value_network_loss = criterion(values, target_values)
         value_network_loss.backward()
-        torch.nn.utils.clip_grad_norm_(value_network.parameters(),0.5)
+        torch.nn.utils.clip_grad_norm_(value_network.parameters(), 2.0)
         value_network_optim.step()
 
         # Testing
