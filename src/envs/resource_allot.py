@@ -24,7 +24,7 @@ class env():
                 n_resource_slot_capacities=(10, 10), p_job_arrival=0.3, max_job_length=15,
                 num_slots=5, backlog_size=60, time_horizon=20):
         self.episode_size = episode_size
-        self.force_stop = max(force_stop, 2* self.episode_size)
+        self.force_stop = max(force_stop, 2 * self.episode_size)
         self.observation_mode = observation_mode
         self.repre = 'image'
         self.backlog_size = backlog_size
@@ -36,8 +36,7 @@ class env():
         self.max_job_length = max_job_length
         self.dist = dist(
             episode_max_size=self.episode_size, new_job_rate=p_job_arrival,
-            job_len=max_job_length, num_resources=self.n_resources, p_small_job=0.65,
-             max_resource_usage=75)
+            job_len=max_job_length, num_resources=self.n_resources, p_small_job=0.9, max_resource_usage=30)
         self.seq_num = 0
         self.seq_idx = 0
         self.renderer = None
@@ -260,8 +259,7 @@ class env():
         reward = 0
         #print("--")
 
-        #reward = -2.0 * (
-        #    np.sum(self.machine.avbl_slot[0] / #np.array([100, 100, 100])))
+        #reward = -np.sum(self.machine.avbl_slot[0] / np.array([100, 100, 100]))
         #return reward
         #print("--")
 

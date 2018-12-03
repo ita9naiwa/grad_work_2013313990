@@ -34,11 +34,12 @@ observation = env.reset(seq_no=0 % 50)
 
 discount = 1.00
 max_job_length = config['max_job_length']
+capa = config['n_resource_slot_capacities']
 n_resources = len(config['n_resource_slot_capacities'])
 input_size = max_job_length * n_resources + 1
 state_size = np.prod(observation['machine'].shape)
-embedding_size = hidden_size = 64
-num_sample_batch = 10
+embedding_size = hidden_size = 32
+num_sample_batch = 5
 
 from collections import deque
 import random
@@ -56,7 +57,7 @@ for iter in range(1000):
     loss = 0
     cnt = 0
 
-    for jj in tqdm(range(1)):
+    for jj in tqdm(range(3)):
         cc = np.random.randint(0, 100)
         state = env.reset(seq_no=cc)
         ob_obs = []
@@ -71,7 +72,7 @@ for iter in range(1000):
             rewards = []
             list_y = []
             usages = np.empty(shape=(0, 3))
-            state = env.reset(seq_no=(iter % 100))
+            state = env.reset(seq_no=(cc % 100))
             for t in range(config['ep_force_stop']):
                 #env.render()
                 #
@@ -105,7 +106,9 @@ for iter in range(1000):
             ob_obs.append(obs)
             ac_actions.append(actions)
             #print("entropy mean:%0.2f" % np.mean(ent_mean))
+
         baseline = np.mean(baseline, axis=0)
+
         for sb in range(num_sample_batch):
             obs = ob_obs[sb]
             actions = ac_actions[sb]
@@ -117,7 +120,7 @@ for iter in range(1000):
                     continue
                 ob = obs[t]
                 adv = ys[t] - baseline[t]
-                t_loss = ptr_net.train_single(ob, action, torch.autograd.Variable(torch.as_tensor(adv, dtype=torch.float32)))
+                t_loss = ptr_net.train_single(ob, action, torch.as_tensor(adv, dtype=torch.float32))
                 loss += t_loss
                 cnt += 1
 

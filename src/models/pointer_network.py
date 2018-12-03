@@ -119,12 +119,12 @@ class pointer_networks(nn.Module):
         self.nonlinear_transform = nonlinear_transform
         self.glimpse = glimpse
         self.use_tanh = use_tanh
-        self.as_critic = critic
+        self.as_critic = as_critic
 
 
         if self.as_critic is True:
             self.nn1 = nn.Linear(self.hidden_size, self.hidden_size)
-            self.nn2 = nn.Linear(self.hidden_size, self.hiden_size)
+            self.nn2 = nn.Linear(self.hidden_size, 1)
 
         self.pointer = Attention(self.hidden_size, self.embedding_size)
         self.input_transform = input_transform(
@@ -325,8 +325,10 @@ class pointer_networks(nn.Module):
         cannot_placed = []
         loss = 1.0
         input_seq_len = enc.shape[1]
+        stop_index = input_seq_len - 1
         entropy = 0
         ent = 0
+        item_indices.append(stop_index)
         for chosen in item_indices:
             pointer_dist, (h, c) = self.decode_single(state, enc, h, c)
             for i in range(input_seq_len):
@@ -335,15 +337,17 @@ class pointer_networks(nn.Module):
                     pointer_dist[0, i] = -1e3
             softmaxed = pointer_dist.softmax(1)[0, :]
             _softmaxed = softmaxed + 0.0001
-            ent = torch.sum(_softmaxed * torch.log(_softmaxed))
+            ent = -torch.sum(_softmaxed * torch.log(_softmaxed))
             entropy += ent
+            if chosen == stop_index:
+                break
+            loss *= softmaxed[chosen]
             state[:durations[chosen]] -= job_reqs[chosen]
             chosen_items.append(chosen)
-            loss *= softmaxed[chosen]
 
-        entropy = entropy / float(len(item_indices))
-        #loss *= softmaxed[0, stop_index]
-        p_a_s = -(torch.log(loss))
+        entropy = entropy
+        loss *= softmaxed[stop_index]
+        p_a_s = torch.log(loss)
         return p_a_s, entropy
 
     def train_single(self, state, action, adv):
@@ -359,7 +363,7 @@ class pointer_networks(nn.Module):
         #batch_size = enc.shape[0]
         input_seq_len = enc.shape[1]
         stop_index = input_seq_len - 1
-        _action.append(stop_index)
+        #_action.append(stop_index)
         for chosen in _action:
             pointer_dist, (h, c) = self.decode_single(_state, enc, h, c)
             for i in range(input_seq_len):

@@ -74,7 +74,7 @@ def roll_out(actor_network, task, sample_nums, value_network, init_state):
 
     return states,actions,rewards,final_r,state
 
-def discount_reward(r, gamma,final_r):
+def discount_reward(r, gamma, final_r):
     discounted_r = np.zeros_like(r)
     running_add = final_r
     for t in reversed(range(0, len(r))):
@@ -107,12 +107,12 @@ def main():
         # train actor network
         actor_network_optim.zero_grad()
         log_softmax_actions = actor_network(states_var)
-        vs = value_network(states_var).detach()
+        values = value_network(states_var)
         #print(vs.shape)
         # calculate qs
         qs = Variable(torch.Tensor(discount_reward(rewards,0.99,final_r)))
 
-        advantages = qs - vs
+        advantages = qs - values.detach()
         actor_network_loss = - torch.mean(torch.sum(log_softmax_actions * actions_var , 1)* advantages)
         actor_network_loss.backward()
         torch.nn.utils.clip_grad_norm_(actor_network.parameters(), 2.0)
@@ -121,11 +121,11 @@ def main():
         # train value network
         value_network_optim.zero_grad()
         target_values = qs
-        values = value_network(states_var)
-        criterion = nn.MSELoss()
+        criterion = nn.MSELoss(size_average=True)
         values = values.squeeze(1)
         value_network_loss = criterion(values, target_values)
         value_network_loss.backward()
+        torch.nn.utils.clip_grad_norm_(actor_network.parameters(), 2.0)
         torch.nn.utils.clip_grad_norm_(value_network.parameters(), 2.0)
         value_network_optim.step()
 
@@ -139,7 +139,7 @@ def main():
                     softmax_action = torch.exp(actor_network(Variable(torch.Tensor([state]))))
                     #print(softmax_action.data)
                     action = np.argmax(softmax_action.data.numpy()[0])
-                    next_state,reward,done,_ = test_task.step(action)
+                    next_state, reward, done, _ = test_task.step(action)
                     result += reward
                     state = next_state
                     if done:
